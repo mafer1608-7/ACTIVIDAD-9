@@ -110,7 +110,7 @@ Se eligió el **ESP32-S3** para la cámara porque el driver `esp32-camera` exige
 
 ## 2. Diseño mecánico
 
-![Corte lateral de la estación](docs/img/corte_lateral.png)
+![Corte lateral de la estación](corte_lateral.png)
 
 *Corte lateral esquemático (no a escala): tolva y disco inclinado, canal a 25°, cámara de luz con la cámara, compuerta en V con servo y salida hacia la Etapa 2.*
 
@@ -136,7 +136,7 @@ Cada cifra lleva su origen: **Dato** viene de una fuente citada, **Cálculo** se
 
 ### 2.2 Módulo 1: alimentador de disco
 
-![Vista frontal del disco](docs/img/disco_frontal.png)
+![Vista frontal del disco](disco_frontal.png)
 
 | Parámetro | Valor | Origen |
 |---|---|---|
@@ -247,7 +247,7 @@ flowchart LR
 
 ### 3.2 Diagrama de conexiones
 
-![Diagrama de conexiones](docs/img/diagrama_conexiones.png)
+![Diagrama de conexiones](diagrama_conexiones.png)
 
 > _Pendiente:_ esquema eléctrico formal (KiCad, Fritzing u otro) con el carrusel incluido.
 
@@ -286,7 +286,7 @@ flowchart LR
 
 ### 4.1 Planta en PyBullet
 
-![Planta de clasificación en PyBullet](docs/capturas/planta_pybullet.png)
+![Planta de clasificación en PyBullet](planta_pybullet.png)
 
 *Planta simulada en PyBullet: tolva de alimentación, banda transportadora, sensor, selector y cinco canaletas que llevan cada moneda a su vaso ($50, $100, $200, $500 y $1.000). Arriba se muestra el contador de monedas y el valor total.*
 
@@ -299,7 +299,7 @@ Antes de comprar materiales se hizo un **modelo 3D a escala 1:1 en milímetros**
 🔗 **Modelo 3D:** [Clasificador de monedas 3D](https://claude.ai/code/artifact/35f0871e-c78c-4fe5-aba9-43928463f560)<br>
 🔗 **Plano de montaje de la Etapa 1:** [Estación de identificación de monedas](https://claude.ai/code/artifact/97f019aa-f567-443f-bbc9-ae76436a3850)
 
-![Modelo 3D de la estación](docs/capturas/modelo_3d.png)
+![Modelo 3D de la estación](modelo_3d.png)
 
 *Captura del modelo 3D: estación de identificación (Etapa 1) y carrusel de 9 frascos (Etapa 2).*
 
