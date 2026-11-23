@@ -19,7 +19,7 @@ Este repositorio reúne la **entrega (a): el contador de monedas montado de form
 | **Estación de identificación** | Detiene cada moneda contra una compuerta en V, bajo la cámara, dentro de una cámara de luz difusa | ESP32-S3 (8 MB PSRAM) + OV2640 + tira LED | Diseñado y simulado en 3D · Montaje: _pendiente_ |
 | **Compuerta en V** | Centra la moneda para la foto y la suelta hacia la Etapa 2 | Servo SG90 | Diseñado y simulado en 3D · Montaje: _pendiente_ |
 | **Carrusel de 9 frascos** | Pone bajo un embudo fijo el frasco que corresponde a la moneda identificada | 28BYJ-48 + ULN2003 | Diseñado y simulado en 3D · Montaje: _pendiente_ |
-| **Clasificador de imágenes** | Decide cuál de las 9 monedas está bajo la cámara | _Por definir_ | _Pendiente_ |
+| **Clasificador de imágenes** | Decide cuál de las 9 monedas está bajo la cámara | OpenCV (detección) + MobileNetV2 en PyTorch (clasificación), cámara del celular | Primera versión en [`vision/`](vision/): modelo de 4 clases y modelo binario $100 vieja contra otras |
 | **Contador** | Suma la cantidad y el valor por denominación | _Por definir_ | _Pendiente_ |
 
 **Resultados principales de esta entrega**
@@ -305,24 +305,81 @@ Antes de comprar materiales se hizo un **modelo 3D a escala 1:1 en milímetros**
 
 **Limitaciones del modelo:** la base, la tolva y el tamaño de los frascos son ilustrativos porque no tienen cota. El cuerpo del 28BYJ-48 está dibujado centrado en su eje (en el motor real el eje está descentrado). El cableado y la fuente no están dibujados.
 
+### 4.3 Prototipo físico del selector
+
+![Prototipo del selector de monedas](docs/capturas/prototipo_banda.webp)
+
+*Primer prototipo armado: banda transportadora en MDF cortado con láser, movida por un motorreductor amarillo (TT) alimentado con una batería de 9 V. Sobre la banda va el celular, que hace de cámara, y un aro de cartulina negra para aislar la zona de captura.*
+
+🎥 **Video del funcionamiento:** [selector_de_monedas.mp4](docs/capturas/selector_de_monedas.mp4)
+
+> GitHub no reproduce dentro del README un video enlazado por ruta relativa; al abrir el enlace se descarga o se ve en el visor de archivos. Para que se reproduzca dentro de la página, se puede arrastrar el `.mp4` al editor web del README y GitHub lo convierte en un reproductor.
+
 ---
 
 ## 5. Identificación y conteo
 
-> ⚠️ **Pendiente.** Esta sección se completa cuando exista el programa.
+El código de esta etapa está en [`vision/`](vision/). Corre en el **PC con Python** y usa como cámara el **celular** (apps IP Webcam o DroidCam por Wi-Fi) o una webcam USB. El modelo se exporta también a ONNX, que es el paso previo para cuantizarlo y llevarlo al ESP32-S3 con ESP-PPQ y ESP-DL.
 
-**Plan propuesto (a validar):**
+### 5.1 Cómo funciona
 
-1. Fotografiar las 9 monedas por ambas caras **dentro del montaje final**, con la luz y la altura definitivas.
-2. Medir el diámetro en píxeles para descartar clases imposibles.
-3. Clasificar el recorte de la moneda entre las 9 clases con un modelo ligero.
-4. Evaluar con fotos que el modelo no haya visto en el entrenamiento.
+El reconocimiento se hace en dos pasos:
+
+1. **Detectar** ([`comun.py`](vision/comun.py)). Se resta una foto de la bandeja vacía (`fondo.png`), se umbraliza con Otsu y se buscan contornos. Solo se acepta un objeto si es circular (circularidad ≥ 0,82 sobre el casco convexo) y llena su círculo envolvente (≥ 0,88). Así se rechazan dos monedas pegadas o una moneda cortada por el borde, en vez de clasificarlas mal.
+2. **Clasificar**. Cada moneda se recorta en una ventana cuadrada de **tamaño fijo en píxeles**, con el fondo puesto en negro. Al no reescalar la moneda, el recorte conserva su diámetro real. El recorte pasa por una **MobileNetV2** preentrenada en ImageNet y ajustada a las monedas.
+
+En vivo ([`04_reconocer_en_vivo.py`](vision/04_reconocer_en_vivo.py)) la exactitud se refuerza con tres mecanismos:
+
+- Se promedian las probabilidades de varios fotogramas de la misma moneda (7 por defecto).
+- Si la confianza queda bajo el umbral (0,80 por defecto) se muestra `?` en vez de arriesgar un error.
+- Con `--mm_por_px`, si el diámetro medido no cuadra con la moneda predicha, se marca como inconsistente.
+
+### 5.2 Scripts
+
+| Script | Qué hace |
+|---|---|
+| [`01_probar_camara.py`](vision/01_probar_camara.py) | Abre la cámara, muestra la detección y guarda la foto de la bandeja vacía (tecla `f`) |
+| [`02_capturar_dataset.py`](vision/02_capturar_dataset.py) | Crea el dataset con etiquetado automático: se ponen en la bandeja monedas de un solo tipo, se elige la clase con una tecla y todos los recortes se guardan ya etiquetados |
+| [`03_entrenar.py`](vision/03_entrenar.py) | Entrena la MobileNetV2 y exporta `modelo.pt`, `modelo.onnx` y `clases.json`. Con `--positiva` entrena un modelo binario (una moneda contra `otra`) |
+| [`04_reconocer_en_vivo.py`](vision/04_reconocer_en_vivo.py) | Reconoce las monedas en vivo. Tecla `r`: imprime en JSON las monedas confirmadas |
+| [`05_evaluar.py`](vision/05_evaluar.py) | Evalúa el modelo con una sesión de prueba que no se usó al entrenar |
+| [`06_revisar_dataset.py`](vision/06_revisar_dataset.py) | Control de calidad antes de entrenar: un mosaico por clase en `revision/` y el conteo por clase y por sesión |
+| [`07_grabar_video.py`](vision/07_grabar_video.py) | Graba un video de una sola moneda con la misma cámara; el nombre del archivo define la clase |
+| [`08_extraer_de_video.py`](vision/08_extraer_de_video.py) | Saca recortes de esos videos, para reprocesarlos sin volver a mover monedas |
+
+**Decisiones de diseño**
+
+- **Validación separada por sesión de captura, no por imagen.** Dos fotogramas de la misma sesión son casi iguales; si uno cae en entrenamiento y otro en validación, la exactitud sale inflada.
+- **Aumentos sin espejo.** Se usa rotación completa (la moneda cae en cualquier orientación), pero no se voltea la imagen porque una moneda espejada no existe.
+- **Escala casi fija en los aumentos** (±3 %), para no borrar la pista del tamaño.
+
+### 5.3 Datos y modelos entrenados
+
+| Carpeta | Contenido |
+|---|---|
+| [`vision/datos_viejo/`](vision/datos_viejo/) | 960 recortes: 240 por clase de $50 vieja, $50 nueva, $100 vieja y $1.000 |
+| [`vision/modelo/`](vision/modelo/) | Modelo de **4 clases** entrenado con `datos_viejo` |
+| [`vision/datos/`](vision/datos/) | 1.208 recortes: 101 de $100 vieja y 1.107 de otras monedas (`otra`) |
+| [`vision/modelo_100v/`](vision/modelo_100v/) | Modelo **binario**: $100 vieja contra cualquier otra moneda |
+
+Cada carpeta de datos trae `metadatos.csv` (archivo, clase, sesión, diámetro en píxeles, circularidad y ventana), la foto del fondo y hojas de contacto en `revision/`.
+
+> **Los recortes van comprimidos** en `crops_parte1.zip`, `crops_parte2.zip`, … porque son más de 2.000 imágenes. Antes de entrenar, descomprime todas las partes ahí mismo (opción "Extraer aquí"); juntas recrean la carpeta `crops/`.
+
+| $100 vieja (`datos`) | Otras monedas (`datos`) |
+|---|---|
+| ![](vision/datos/revision/100_vieja.jpg) | ![](vision/datos/revision/otra.jpg) |
+
+Los videos crudos de los que salieron los recortes (unos 700 MB) no se suben al repositorio por su tamaño; ver [`vision/videos/`](vision/videos/).
+
+### 5.4 Estado
 
 | Elemento | Estado |
 |---|---|
-| Dataset (fotos por moneda y por cara) | _Pendiente_ |
-| Modelo y dónde corre (ESP32-S3 o PC) | _Por definir_ |
-| Resultados y matriz de confusión | _Pendiente_ |
+| Detección y recorte | Funcionando con la cámara del celular |
+| Dataset | 4 de las 9 monedas en `datos_viejo`; `datos` centrado en la $100 vieja. _Pendiente:_ las 5 monedas restantes |
+| Modelo | Corre en PC. _Pendiente:_ cuantizar el ONNX y probarlo en el ESP32-S3 |
+| Resultados y matriz de confusión | _Pendiente:_ evaluar con una sesión de prueba independiente (`05_evaluar.py`) y anotar aquí las cifras |
 | Firmware de la estación | _Pendiente_ |
 
 ---
@@ -356,7 +413,8 @@ Antes de comprar materiales se hizo un **modelo 3D a escala 1:1 en milímetros**
 | Herramienta | Versión | Uso |
 |---|---|---|
 | _Por definir_ (Arduino IDE / PlatformIO / ESP-IDF) | – | Firmware |
-| _Por definir_ | – | Entrenamiento del clasificador |
+| Python + OpenCV, NumPy, Pillow, PyTorch, torchvision, ONNX | Python 3.10+ (ver [`vision/requirements.txt`](vision/requirements.txt)) | Detección, entrenamiento y reconocimiento en vivo |
+| IP Webcam o DroidCam (Android) | – | Usar el celular como cámara por Wi-Fi |
 | _Por definir_ (KiCad, Fritzing u otro) | – | Esquema eléctrico |
 | _Por definir_ (SolidWorks, Fusion 360, Onshape u otro) | – | CAD |
 
@@ -395,7 +453,21 @@ El montaje se hace **de la prueba más barata a la más cara**, para no construi
 2. Cablea según la [sección 3](#3-diseño-eléctrico).
 3. Vuelve a tomar las fotos de entrenamiento en el montaje final, porque cualquier cambio de luz o altura cambia las imágenes.
 
-### Paso 6: Firmware
+### Paso 6: Reconocimiento de monedas en PC
+
+```bash
+cd vision
+pip install -r requirements.txt
+python 01_probar_camara.py --fuente http://IP_DEL_CELULAR:8080/video   # bandeja vacía: tecla f guarda datos/fondo.png
+python 02_capturar_dataset.py --fuente http://IP_DEL_CELULAR:8080/video --fondo datos/fondo.png --ventana <sugerida>
+python 06_revisar_dataset.py
+python 03_entrenar.py --datos datos --salida modelo
+python 04_reconocer_en_vivo.py --fuente http://IP_DEL_CELULAR:8080/video --fondo datos/fondo.png --ventana <la misma>
+```
+
+El celular y el PC deben estar en la misma red Wi-Fi. La `--ventana` al reconocer debe ser la misma que al capturar. Más detalle en [`vision/README.md`](vision/README.md).
+
+### Paso 7: Firmware
 
 > ⚠️ _Pendiente:_ instrucciones para clonar, compilar y subir el programa.
 
@@ -408,18 +480,27 @@ cd [repositorio]
 
 ## 8. Estructura del repositorio
 
-Estructura propuesta; se actualiza a medida que se suben los archivos.
+Las carpetas marcadas _(pendiente)_ se crean a medida que se suben los archivos.
 
 ```
-[repositorio]/
+ACTIVIDAD-9/
 ├── README.md
+├── *.png                         ← figuras del diseño (corte, disco, conexiones, modelo 3D, PyBullet)
 ├── docs/
-│   ├── capturas/          ← modelo 3D, fotos del montaje y videos
-│   └── img/               ← esquema eléctrico y planos en imagen
-├── mecanica/              ← CAD y archivos de corte o impresión de cada pieza
-├── electronica/           ← esquema eléctrico y lista de conexiones
-├── firmware/              ← programa del ESP32-S3 (y del ESP32 del carrusel)
-└── vision/                ← fotos de entrenamiento, modelo y resultados
+│   └── capturas/
+│       ├── prototipo_banda.webp  ← foto del prototipo
+│       └── selector_de_monedas.mp4 ← video del funcionamiento
+├── vision/                       ← reconocimiento de monedas (parcial 2.º corte)
+│   ├── 01_…08_*.py, comun.py     ← scripts de cámara, dataset, entrenamiento y reconocimiento
+│   ├── requirements.txt
+│   ├── datos/                    ← recortes $100 vieja / otra + metadatos y mosaicos
+│   ├── datos_viejo/              ← recortes de 4 clases + metadatos y mosaicos
+│   ├── modelo/                   ← modelo de 4 clases (.pt, .onnx, clases.json)
+│   ├── modelo_100v/              ← modelo binario $100 vieja / otra
+│   └── videos/                   ← videos crudos (no se suben, ver LEEME)
+├── mecanica/                     ← CAD y archivos de corte (pendiente)
+├── electronica/                  ← esquema eléctrico (pendiente)
+└── firmware/                     ← programa del ESP32-S3 (pendiente)
 ```
 
 ---
@@ -451,7 +532,7 @@ Estos riesgos salen de la investigación de diseño. La columna de solución es 
 
 | Requisito de la entrega (a) | Avance |
 |---|---|
-| Contador de monedas montado de forma funcional | Diseño completo y simulación 3D. _Pendiente:_ montaje físico y prueba |
+| Contador de monedas montado de forma funcional | Diseño completo y simulación 3D. Prototipo de banda transportadora armado ([foto y video](#43-prototipo-físico-del-selector)) y reconocimiento en PC funcionando con la cámara del celular. _Pendiente:_ las 9 clases y la prueba completa del montaje |
 | Repositorio mecánico | Medidas y decisiones documentadas (sección 2) y modelo 3D. _Pendiente:_ CAD y planos acotados |
 | Repositorio eléctrico | Diagrama de bloques, pines y presupuesto de corriente (sección 3). _Pendiente:_ esquema eléctrico y pines del carrusel |
 
@@ -460,7 +541,7 @@ Estos riesgos salen de la investigación de diseño. La columna de solución es 
 1. Medir nuestras monedas y actualizar la tabla de la sección 2.1.
 2. Hacer las pruebas en cartón de los pasos 1 a 4.
 3. Construir la versión final y subir CAD, planos y esquema eléctrico.
-4. Tomar el dataset en el montaje final y entrenar el clasificador.
+4. Completar el dataset con las 9 monedas en el montaje final, reentrenar y medir la exactitud con una sesión de prueba independiente.
 5. Escribir el firmware de la estación y medir los resultados.
 6. Entregas siguientes: recolección por voz (Etapa 3) y evasión de obstáculos (Etapa 4).
 
