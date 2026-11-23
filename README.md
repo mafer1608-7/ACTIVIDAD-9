@@ -313,7 +313,7 @@ Antes de comprar materiales se hizo un **modelo 3D a escala 1:1 en milímetros**
 
 🎥 **Video del funcionamiento:** [selector_de_monedas.mp4](docs/capturas/selector_de_monedas.mp4)
 
-> GitHub no reproduce dentro del README un video enlazado por ruta relativa; al abrir el enlace se descarga o se ve en el visor de archivos. Para que se reproduzca dentro de la página, se puede arrastrar el `.mp4` al editor web del README y GitHub lo convierte en un reproductor.
+https://github.com/user-attachments/assets/9f565c47-1adc-4a37-94b0-31186b304a08
 
 ---
 
