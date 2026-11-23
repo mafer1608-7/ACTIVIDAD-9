@@ -296,8 +296,10 @@ flowchart LR
 
 Antes de comprar materiales se hizo un **modelo 3D a escala 1:1 en milímetros** de las Etapas 1 y 2. Se puede girar, hacer zoom, tocar cada pieza para ver sus medidas y su origen (dato, cálculo o ilustrativo), y ver la animación del recorrido completo: el disco gira, la moneda baja por el canal, se detiene en la V, se toma la foto, el servo abre y la moneda cae en su frasco. Incluye una ventana con lo que vería la OV2640.
 
-🔗 **Modelo 3D:** [Clasificador de monedas 3D](https://claude.ai/code/artifact/35f0871e-c78c-4fe5-aba9-43928463f560)<br>
-🔗 **Plano de montaje de la Etapa 1:** [Estación de identificación de monedas](https://claude.ai/code/artifact/97f019aa-f567-443f-bbc9-ae76436a3850)
+🔗 **Modelo 3D:** [Clasificador de monedas 3D](https://mafer1608-7.github.io/ACTIVIDAD-9/docs/modelo_3d.html) · archivo: [`docs/modelo_3d.html`](docs/modelo_3d.html)<br>
+🔗 **Plano de montaje de la Etapa 1:** [Estación de identificación de monedas](https://mafer1608-7.github.io/ACTIVIDAD-9/docs/plano_estacion.html) · archivo: [`docs/plano_estacion.html`](docs/plano_estacion.html)
+
+> Las dos páginas están en `docs/` y se abren en el navegador con GitHub Pages. El modelo 3D carga la librería three.js desde internet, así que necesita conexión. Si se descarga el repositorio, también se pueden abrir con doble clic en el archivo `.html`.
 
 ![Modelo 3D de la estación](modelo_3d.png)
 
@@ -497,6 +499,8 @@ ACTIVIDAD-9/
 │   └── capturas/
 │       ├── prototipo_banda.webp  ← foto del prototipo
 │       └── selector_de_monedas.mp4 ← video del funcionamiento
+│   ├── modelo_3d.html            ← modelo 3D interactivo
+│   └── plano_estacion.html       ← plano de montaje de la Etapa 1
 ├── 1/vision/                     ← scripts (01_…08_*.py, comun.py), requirements.txt, README y videos/LEEME
 ├── 2/vision/modelo/              ← modelo de 4 clases (.pt, .onnx, clases.json)
 ├── 3/vision/modelo_100v/         ← modelo binario $100 vieja / otra

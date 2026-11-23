@@ -1,0 +1,992 @@
+<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#fff;color:#000}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
+<title>Clasificador de monedas 3D</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Public+Sans:wght@400;600;700&family=JetBrains+Mono:wght@400;600&display=swap">
+<style>
+/* Layout: banco de trabajo. Visor 3D a la izquierda, ficha técnica a la derecha; en teléfono, visor arriba y ficha debajo. */
+:root{
+  --paper:#f3f4f0;
+  --sheet:#fbfbf8;
+  --ink:#1d2a33;
+  --muted:#56636b;
+  --line:#c9cfcb;
+  --copper:#a85a24;
+  --copper-soft:#f1e2d4;
+  --sig:#1f6f8b;
+  --scene:#e9ece7;
+  --grid:#c4cbc6;
+  --floor:#dfe2dc;
+  --f-display:"Barlow Condensed","Arial Narrow",Arial,sans-serif;
+  --f-body:"Public Sans",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --f-mono:"JetBrains Mono",ui-monospace,Menlo,Consolas,monospace;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --paper:#141a1e;--sheet:#1a2126;--ink:#e3e8e6;--muted:#9aa7ad;--line:#33404a;
+    --copper:#e08a4c;--copper-soft:#3a2a1e;--sig:#6cc0dc;--scene:#182025;--grid:#2c3841;--floor:#222b31;
+    color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --paper:#141a1e;--sheet:#1a2126;--ink:#e3e8e6;--muted:#9aa7ad;--line:#33404a;
+  --copper:#e08a4c;--copper-soft:#3a2a1e;--sig:#6cc0dc;--scene:#182025;--grid:#2c3841;--floor:#222b31;
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+html,body{height:100%}
+body{background:var(--paper);color:var(--ink);font-family:var(--f-body);font-size:15px;line-height:1.5}
+.app{display:grid;grid-template-columns:minmax(0,1fr) 360px;height:100%}
+.viewer{position:relative;min-width:0;min-height:0;background:var(--scene);overflow:hidden;touch-action:none}
+.viewer canvas{display:block}
+#labels{position:absolute;inset:0;pointer-events:none}
+.panel{border-left:1px solid var(--line);background:var(--sheet);overflow-y:auto;min-width:0;
+  padding-left:max(18px,env(safe-area-inset-left,0px));padding-right:max(18px,env(safe-area-inset-right,0px));padding-block:20px 28px;
+  display:flex;flex-direction:column;gap:20px}
+@media (max-width:820px){
+  .app{grid-template-columns:minmax(0,1fr);grid-template-rows:62vh auto;height:auto}
+  .viewer{min-height:340px}
+  .panel{border-left:0;border-top:1px solid var(--line);overflow:visible}
+}
+h1,h2{font-family:var(--f-display);font-weight:700;line-height:1.05;margin:0;text-wrap:balance}
+h1{font-size:2.1rem;letter-spacing:.01em}
+h2{font-size:1.05rem;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:var(--muted)}
+p{margin:0}
+.eyebrow{font-family:var(--f-mono);font-size:.7rem;letter-spacing:.12em;text-transform:uppercase;color:var(--copper)}
+.muted{color:var(--muted)}
+.small{font-size:.85rem}
+section{display:flex;flex-direction:column;gap:10px}
+.head{display:flex;flex-direction:column;gap:6px;border-bottom:2px solid var(--ink);padding-bottom:14px}
+
+/* etapas */
+.stages{list-style:none;margin:0;padding:0;display:grid;grid-template-columns:repeat(5,minmax(0,1fr));border:1px solid var(--ink)}
+.stages li{padding:6px 6px 7px;border-right:1px solid var(--ink);font-family:var(--f-mono);font-size:.68rem;line-height:1.25;min-width:0;transition:background .2s,color .2s}
+.stages li:last-child{border-right:0}
+.stages li b{display:block;font-family:var(--f-display);font-size:.95rem;font-weight:600}
+.stages li.on{background:var(--copper);color:var(--sheet)}
+.readout{font-family:var(--f-mono);font-size:.82rem;border:1px dashed var(--line);padding:10px 12px;background:var(--paper);display:flex;flex-direction:column;gap:2px;min-height:62px}
+.readout b{font-family:var(--f-display);font-size:1.35rem;font-weight:600;letter-spacing:.02em}
+
+/* controles */
+.row{display:flex;flex-wrap:wrap;gap:8px}
+button,select{font:inherit;font-size:.85rem;color:var(--ink);background:var(--paper);border:1px solid var(--line);border-radius:3px;padding:6px 10px;cursor:pointer}
+button:hover{border-color:var(--ink)}
+button[aria-pressed="true"]{background:var(--ink);color:var(--sheet);border-color:var(--ink)}
+button.primary{background:var(--copper);border-color:var(--copper);color:var(--sheet);font-weight:600}
+button:focus-visible,select:focus-visible,input:focus-visible{outline:2px solid var(--copper);outline-offset:2px}
+.toggles{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px 12px;font-size:.88rem}
+.toggles label{display:flex;gap:8px;align-items:center;cursor:pointer}
+.toggles input{accent-color:var(--copper);width:16px;height:16px}
+
+/* piezas */
+.parts{display:flex;flex-wrap:wrap;gap:6px}
+.parts button{font-size:.8rem;padding:4px 8px}
+.card{border:1px solid var(--ink);background:var(--paper);padding:12px 14px;display:flex;flex-direction:column;gap:6px}
+.card h3{font-family:var(--f-display);font-size:1.3rem;font-weight:600;margin:0}
+.card dl{margin:0;display:grid;grid-template-columns:auto minmax(0,1fr);gap:3px 12px;font-size:.86rem}
+.card dt{font-family:var(--f-mono);font-size:.72rem;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;padding-top:2px}
+.card dd{margin:0;font-variant-numeric:tabular-nums}
+.tag{display:inline-block;font-family:var(--f-mono);font-size:.66rem;padding:0 5px;border:1px solid currentColor;border-radius:2px;letter-spacing:.06em;vertical-align:1px}
+.tag.dato{color:var(--sig)}.tag.calc{color:var(--copper)}.tag.sup{color:var(--muted)}
+
+/* monedas */
+.coins{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px}
+.coin{display:flex;align-items:center;gap:8px;font-size:.78rem;font-family:var(--f-mono);padding:4px 6px;border:1px solid transparent;border-radius:3px;min-width:0}
+.coin i{flex:none;border-radius:50%;border:1px solid var(--ink)}
+.coin.on{border-color:var(--copper);background:var(--copper-soft)}
+.coin span{min-width:0;line-height:1.2}
+
+/* etiquetas 3D */
+.lbl3d{font-family:var(--f-mono);font-size:11px;line-height:1.2;color:var(--ink);background:color-mix(in srgb,var(--sheet) 88%,transparent);border:1px solid var(--line);border-left:3px solid var(--copper);padding:2px 6px;white-space:nowrap;transform:translateY(-14px);pointer-events:auto;cursor:pointer}
+.lbl3d:hover{border-color:var(--ink);border-left-color:var(--copper)}
+.hide-labels .lbl3d{display:none}
+
+/* vista de cámara */
+.inset{position:absolute;left:calc(12px + env(safe-area-inset-left,0px));bottom:12px;width:208px;height:156px;border:2px solid var(--sig);pointer-events:none}
+.inset span{position:absolute;left:0;top:-22px;font-family:var(--f-mono);font-size:10.5px;background:var(--sig);color:var(--sheet);padding:2px 6px;white-space:nowrap}
+.inset.flash{box-shadow:0 0 0 4px color-mix(in srgb,var(--sig) 40%,transparent)}
+.hud{position:absolute;right:calc(12px + env(safe-area-inset-right,0px));top:12px;font-family:var(--f-mono);font-size:11px;color:var(--muted);text-align:right;pointer-events:none}
+.err{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;padding:24px;text-align:center;font-family:var(--f-mono);font-size:.9rem;color:var(--muted)}
+@media (max-width:820px){.inset{width:156px;height:117px}}
+.stages.proj{grid-template-columns:repeat(2,minmax(0,1fr))}
+.lbl3d.jar{font-size:10px;border-left-color:var(--sig);transform:translateY(-6px)}
+.bubble{font-family:var(--f-display);font-size:18px;font-weight:600;color:var(--sheet);background:var(--sig);padding:4px 12px;border-radius:14px 14px 14px 2px;white-space:nowrap;transform:translate(40%,-60%)}
+ul.dec{margin:0;padding-left:1.1em;display:flex;flex-direction:column;gap:6px}
+ol.src{margin:0;padding-left:1.4em;display:flex;flex-direction:column;gap:3px}
+ol.src a{color:var(--sig)}
+@media (prefers-reduced-motion:reduce){.stages li{transition:none}}
+</style>
+
+<div class="app">
+  <div class="viewer" id="viewer">
+    <div id="labels"></div>
+    <div class="inset" id="inset"><span id="insetTag">Vista OV2640 · 64,9 × 48,5 mm</span></div>
+    <div class="hud">Arrastra para girar · rueda o pellizco para zoom<br>Clic en una pieza para ver sus medidas<br>Cuadrícula de 10 mm</div>
+  </div>
+
+  <aside class="panel">
+    <div class="head">
+      <span class="eyebrow">Proyecto MICROS · Etapas 1 y 2 · Escala 1:1 en mm</span>
+      <h1>Clasificador de monedas</h1>
+      <p class="muted small">La estación identifica cada moneda con la cámara del ESP32-S3 y el carrusel la guarda en el frasco de su tipo. Las medidas salen del plano de la Etapa 1 y de las hojas de datos citadas; lo que no tiene cota está marcado como ilustrativo.</p>
+    </div>
+
+    <section aria-live="polite">
+      <h2>Etapas del proyecto</h2>
+      <ol class="stages proj" id="proj">
+        <li data-st="0"><b>1 Identificar</b>cámara + V</li>
+        <li data-st="1"><b>2 Organizar</b>carrusel</li>
+      </ol>
+      <h2>Etapa 1 paso a paso</h2>
+      <ol class="stages" id="stages">
+        <li data-st="0"><b>1 Tolva</b>disco gira 90°</li>
+        <li data-st="1"><b>2 Caída</b>por el orificio</li>
+        <li data-st="2"><b>3 Canal</b>baja a 25°</li>
+        <li data-st="3"><b>4 Foto</b>quieta en la V</li>
+        <li data-st="4"><b>5 Salida</b>servo abre</li>
+      </ol>
+      <div class="readout" id="readout"><span class="muted" id="roHead">Moneda en curso</span><b id="coinName">—</b><span id="coinInfo" class="muted">esperando el disco</span></div>
+      <div class="row">
+        <button class="primary" id="play" type="button">Pausar</button>
+        <button id="step" type="button">Siguiente moneda</button>
+        <select id="speed" aria-label="Velocidad de la animación">
+          <option value="0.5">Lento ×0,5</option>
+          <option value="1" selected>Normal ×1</option>
+          <option value="2">Rápido ×2</option>
+        </select>
+      </div>
+      <div class="row" hidden style="display:none">
+        <select id="ask" aria-label="Frasco a pedir"><option value="auto">Frasco más lleno</option></select>
+        <button id="askBtn" type="button">Pedir por voz</button>
+        <input type="checkbox" id="tAuto">
+      </div>
+      <p class="muted small" id="askNote" hidden style="display:none"></p>
+    </section>
+
+    <section>
+      <h2>Vista</h2>
+      <div class="row" id="views">
+        <button type="button" data-view="all" aria-pressed="true">Todo</button>
+        <button type="button" data-view="iso" aria-pressed="false">Etapa 1</button>
+        <button type="button" data-view="st2" aria-pressed="false">Etapa 2</button>
+        <button type="button" data-view="side" aria-pressed="false">Corte lateral</button>
+        <button type="button" data-view="cam" aria-pressed="false">Cámara de luz</button>
+      </div>
+      <div class="toggles">
+        <label><input type="checkbox" id="tLabels" checked> Etiquetas</label>
+        <label><input type="checkbox" id="tXray" checked> Tubo transparente</label>
+        <label><input type="checkbox" id="tFov" checked> Campo de visión</label>
+        <label><input type="checkbox" id="tInset" checked> Vista de la cámara</label>
+        <label hidden style="display:none"><input type="checkbox" id="tFollow"> Seguir al carro</label>
+      </div>
+    </section>
+
+    <section>
+      <h2>Piezas</h2>
+      <div class="parts" id="parts"></div>
+      <div class="card" id="card"></div>
+    </section>
+
+    <section>
+      <h2>Las 9 monedas a escala</h2>
+      <div class="coins" id="coins"></div>
+      <p class="muted small">Diámetros y espesores de la tabla de monedas de Colombia en Wikipedia. El tamaño del núcleo de las bimetálicas es solo visual.</p>
+    </section>
+
+    <section>
+      <h2>Cómo leer el modelo</h2>
+      <p class="small"><span class="tag dato">DATO</span> medida citada en el plano o en una fuente. <span class="tag calc">CÁLCULO</span> derivada de datos citados. <span class="tag sup">ILUSTRATIVO</span> forma sin cota, dibujada solo para ubicar la pieza.</p>
+      <p class="muted small">Los ángulos de 45° y 25° son los valores de partida del plano; en el montaje real quedan ajustables. Cableado y fuentes no se dibujan.</p>
+    </section>
+
+    <section>
+      <h2>Decisión de la Etapa 2</h2>
+      <ul class="small dec">
+        <li><b>Carrusel en vez de embudo giratorio.</b> El embudo queda fijo y un solo motor gira el plato hasta poner bajo él el frasco de la moneda identificada. Cada frasco queda siempre en la misma posición del plato, así que más adelante también se puede presentar un frasco en un punto fijo.</li>
+      </ul>
+      <h2>Fuentes</h2>
+      <ol class="small src">
+        <li><a href="plano_estacion.html" target="_blank" rel="noopener">Plano de la estación de identificación (Etapa 1)</a></li>
+        <li><a href="https://en.wikipedia.org/wiki/Colombian_peso" target="_blank" rel="noopener">Monedas de Colombia (Wikipedia)</a></li>
+        <li><a href="https://docs.espressif.com/projects/esp-idf/en/v5.2.2/esp32s3/api-reference/network/esp_now.html" target="_blank" rel="noopener">ESP-NOW (Espressif)</a></li>
+        <li><a href="https://botland.store/stepper-motors/3480-stepper-motor-with-28byj-48-gear-5v01a003nm-with-uln2003a-driver-5903351241458.html" target="_blank" rel="noopener">28BYJ-48 + ULN2003 (Botland)</a></li>
+        <li><a href="https://www.datasheetcafe.com/sg90-datasheet-pdf-9-g-micro-servo/" target="_blank" rel="noopener">SG90</a> · <a href="https://docs.cirkitdesigner.com/component/0f17212d-7f03-40c4-a515-a7fb823581bd/esp32-s3-wroom-cam-devboard" target="_blank" rel="noopener">placa ESP32-S3 CAM (Cirkit Designer)</a></li>
+      </ol>
+    </section>
+  </aside>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/three@0.147.0/build/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.147.0/examples/js/controls/OrbitControls.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.147.0/examples/js/renderers/CSS2DRenderer.js"></script>
+<script>
+(function(){
+const viewer=document.getElementById('viewer');
+if(!window.THREE||!THREE.OrbitControls||!THREE.CSS2DRenderer){
+  const e=document.createElement('div');e.className='err';
+  e.textContent='No se pudo cargar three.js desde cdn.jsdelivr.net. Revisa la conexión y recarga la página.';
+  viewer.appendChild(e);return;
+}
+const V3=THREE.Vector3, D2R=Math.PI/180;
+const reduce=matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+/* ---------- medidas (mm) ---------- */
+const M={
+  feedTilt:45, chTilt:25,
+  disc:{r:60,t:1.5,pocketR:14.25,pitch:38},
+  plate:{w:140,t:3,holeR:14.5},
+  motor:{r:14,h:19,ears:35},
+  ch:{len:180,inner:30,wallH:6,wallT:3,floorT:3},
+  camS:110, lens:60, tube:{ri:45,h:72},
+  fov:{long:64.9,short:48.5},
+  apexS:132.5
+};
+const FEED_C=new V3(0,165,0);
+const CH_S=new V3(22,135,0);
+
+const COINS=[
+  {id:'50v',name:'50 vieja',d:21,t:1.3,ring:'silver'},
+  {id:'50n',name:'50 nueva',d:17,t:1.3,ring:'silver'},
+  {id:'100v',name:'100 vieja',d:23,t:1.55,ring:'gold'},
+  {id:'100n',name:'100 nueva',d:20.3,t:1.55,ring:'gold'},
+  {id:'200v',name:'200 vieja',d:24.4,t:1.7,ring:'silver'},
+  {id:'200n',name:'200 nueva',d:22.4,t:1.7,ring:'silver'},
+  {id:'500v',name:'500 vieja',d:23.5,t:2,ring:'silver',core:'gold'},
+  {id:'500n',name:'500 nueva',d:23.7,t:2,ring:'silver',core:'gold'},
+  {id:'1000',name:'1000',d:26.7,t:2.7,ring:'gold',core:'silver'}
+];
+const fmt=n=>String(n).replace('.',',');
+
+/* ---------- renderer ---------- */
+const renderer=new THREE.WebGLRenderer({antialias:true});
+renderer.setPixelRatio(Math.min(devicePixelRatio||1,2));
+viewer.insertBefore(renderer.domElement,viewer.firstChild);
+const labelR=new THREE.CSS2DRenderer({element:document.getElementById('labels')});
+
+const scene=new THREE.Scene();
+const camera=new THREE.PerspectiveCamera(35,1,1,14000);
+camera.position.set(520,560,820);
+const controls=new THREE.OrbitControls(camera,renderer.domElement);
+controls.target.set(150,-10,0);
+controls.enableDamping=true;controls.dampingFactor=.08;
+controls.minDistance=60;controls.maxDistance=7000;
+
+scene.add(new THREE.HemisphereLight(0xffffff,0x8a8f8a,.75));
+const sun=new THREE.DirectionalLight(0xffffff,.9);sun.position.set(220,420,320);scene.add(sun);
+const fill=new THREE.DirectionalLight(0xffffff,.35);fill.position.set(-300,150,-250);scene.add(fill);
+
+/* ---------- materiales ---------- */
+const allMats=[];
+function mat(o){const m=new THREE.MeshStandardMaterial(Object.assign({roughness:.8,metalness:0},o));allMats.push(m);return m;}
+const C={
+  mdf:()=>mat({color:0xa98a66}),
+  mdfDark:()=>mat({color:0xa88660}),
+  acrylic:()=>mat({color:0xdfeef3,transparent:true,opacity:.28,roughness:.1,depthWrite:false}),
+  discMat:()=>mat({color:0xf2f2ee,transparent:true,opacity:.82,roughness:.3}),
+  black:()=>mat({color:0x121416,roughness:.95}),
+  white:()=>mat({color:0xf4f4f1,roughness:.9,transparent:true,opacity:.22,side:THREE.DoubleSide,depthWrite:false}),
+  diffuser:()=>mat({color:0xfff8e8,roughness:1,transparent:true,opacity:.28,side:THREE.DoubleSide,depthWrite:false}),
+  led:()=>mat({color:0xfff2cc,emissive:0xffe2a0,emissiveIntensity:.9,side:THREE.DoubleSide}),
+  steel:()=>mat({color:0xb8bec4,metalness:.6,roughness:.4}),
+  blueCap:()=>mat({color:0x2f5fb3,roughness:.6}),
+  pcbGreen:()=>mat({color:0x1f6b3a,roughness:.7}),
+  pcbBlack:()=>mat({color:0x1b1d22,roughness:.6}),
+  servo:()=>mat({color:0x2b62c9,roughness:.55}),
+  copper:()=>mat({color:0xb8742f,roughness:.5}),
+  ghost:()=>mat({color:0x7b8a92,transparent:true,opacity:.18,side:THREE.DoubleSide,depthWrite:false})
+};
+const coinMat={
+  gold:new THREE.MeshStandardMaterial({color:0xd4ae55,metalness:.55,roughness:.32,emissive:0x2a1d05}),
+  silver:new THREE.MeshStandardMaterial({color:0xc9cdd1,metalness:.55,roughness:.3,emissive:0x1a1c1e})
+};
+
+/* ---------- piezas ---------- */
+const parts={};      // id -> {group, info}
+const pickables=[];
+function part(id,objs,info){
+  objs=[].concat(objs);
+  if(!parts[id])parts[id]={objs:[],info};
+  parts[id].objs.push(...objs);
+  objs.forEach(g=>g.traverse(o=>{if(o.isMesh){o.userData.part=id;pickables.push(o);}}));
+}
+function label(obj,text,pos,id){
+  const el=document.createElement('div');el.className='lbl3d';el.textContent=text;
+  el.addEventListener('click',ev=>{ev.stopPropagation();select(id);});
+  const l=new THREE.CSS2DObject(el);l.position.copy(pos);l.userData.part=id;obj.add(l);return l;
+}
+function box(w,h,d,m){return new THREE.Mesh(new THREE.BoxGeometry(w,h,d),m);}
+function cyl(rt,rb,h,m,seg,open,ts,tl){return new THREE.Mesh(new THREE.CylinderGeometry(rt,rb,h,seg||48,1,!!open,ts||0,tl===undefined?Math.PI*2:tl),m);}
+function plateWithHoles(outer,holes,depth){
+  // outer: Shape; holes: [[x,y,r]]; extruded along +z then turned so it lies in local XZ, thickness toward -y
+  holes.forEach(([x,y,r])=>{const p=new THREE.Path();p.absarc(x,y,r,0,Math.PI*2,true);outer.holes.push(p);});
+  const g=new THREE.ExtrudeGeometry(outer,{depth,bevelEnabled:false,curveSegments:48});
+  g.rotateX(Math.PI/2);
+  return g;
+}
+
+/* base y cuadrícula */
+const grid=new THREE.GridHelper(800,80,0x999999,0x999999);grid.position.set(150,-99.7,0);scene.add(grid);
+const grid2=new THREE.GridHelper(3200,32,0x999999,0x999999);grid2.position.set(1400,-99.8,0);scene.add(grid2);
+const base=box(245,3,170,C.mdf());base.position.set(42.5,1.5,0);
+scene.add(base);
+
+/* ===== alimentador (marco local: x sube por el disco, y = normal hacia la tolva, z = ancho) ===== */
+const feed=new THREE.Group();feed.position.copy(FEED_C);feed.rotation.z=M.feedTilt*D2R;scene.add(feed);
+
+// placa trasera con orificio de caída arriba
+{
+  const s=new THREE.Shape();const h=M.plate.w/2;
+  s.moveTo(-h,-h);s.lineTo(h,-h);s.lineTo(h,h);s.lineTo(-h,h);s.lineTo(-h,-h);
+  const g=plateWithHoles(s,[[M.disc.pitch,0,M.plate.holeR],[0,0,3]],M.plate.t);
+  const m=new THREE.Mesh(g,C.mdfDark());
+  const grp=new THREE.Group().add(m);feed.add(grp);
+  part('placa',grp,{name:'Placa trasera',rows:[['Material','MDF 3 mm','dato'],['Orificio de caída','Ø29 mm, arriba','dato'],['Inclinación','45° de partida, prueba 40–60°','sup'],['Tamaño','140 × 140 mm','sup']],
+    note:'El bolsillo que llega arriba coincide con el orificio y la moneda cae por detrás hacia el canal.'});
+  label(feed,'Placa trasera · orificio Ø29',new V3(48,-3,-62),'placa');
+}
+// disco con 4 bolsillos
+const spin=new THREE.Group();feed.add(spin);
+const pockets=[];
+{
+  const s=new THREE.Shape();s.absarc(0,0,M.disc.r,0,Math.PI*2,false);
+  const holes=[];for(let k=0;k<4;k++){const a=k*Math.PI/2;holes.push([M.disc.pitch*Math.cos(a),M.disc.pitch*Math.sin(a),M.disc.pocketR]);}
+  holes.push([0,0,2.5]);
+  const g=plateWithHoles(s,holes,M.disc.t);g.translate(0,M.disc.t,0);
+  const disc=new THREE.Mesh(g,C.discMat());
+  const hub=cyl(7,7,5,C.steel());hub.position.y=M.disc.t+2.5;
+  spin.add(disc,hub);
+  for(let k=0;k<4;k++){const a=k*Math.PI/2;const o=new THREE.Object3D();o.position.set(M.disc.pitch*Math.cos(a),0,-M.disc.pitch*Math.sin(a));spin.add(o);pockets.push({anchor:o,coin:null});}
+  part('disco',[disc,hub],{name:'Disco separador',rows:[['Diámetro × espesor','Ø120 × 1,5 mm','dato'],['Bolsillos','4 × Ø28,5 mm a r = 38 mm','dato'],['Por qué Ø28,5','moneda de 1000 (26,7) + holgura; dos de 50 nueva no caben (34 > 28,5)','calc'],['Giro por moneda','90° = 1024 medios pasos','calc']],
+    note:'Con 1,5 mm de espesor, una segunda moneda montada encima solo queda apoyada 0,2 mm y resbala de vuelta a la tolva.'});
+  label(feed,'Disco Ø120 × 1,5 · 4 bolsillos Ø28,5',new V3(-6,4,62),'disco');
+}
+// tolva: pared semicircular en la mitad baja del disco
+{
+  const wall=cyl(63,63,40,C.acrylic(),48,true,Math.PI,Math.PI);
+  wall.material.side=THREE.DoubleSide;wall.position.y=20;
+  const rim=cyl(64.5,64.5,2,C.mdf(),48,true,Math.PI,Math.PI);rim.material.side=THREE.DoubleSide;rim.position.y=40;
+  const grp=new THREE.Group().add(wall,rim);feed.add(grp);
+  part('tolva',grp,{name:'Tolva',rows:[['Forma','pared semicircular al pie del disco','sup'],['Radio × alto','R63 × 40 mm','sup']],
+    note:'El plano no acota la tolva. Lo que importa es que las monedas queden apoyadas sobre la mitad baja del disco para que cada bolsillo recoja una.'});
+  label(feed,'Tolva (monedas sueltas)',new V3(-64,42,0),'tolva');
+}
+// monedas sueltas en la tolva (decorativas)
+function makeCoin(c){
+  const g=new THREE.Group();
+  const ring=new THREE.Mesh(new THREE.CylinderGeometry(c.d/2,c.d/2,c.t,48),coinMat[c.ring]);
+  g.add(ring);
+  if(c.core){const core=new THREE.Mesh(new THREE.CylinderGeometry(c.d*.3,c.d*.3,c.t+.06,40),coinMat[c.core]);g.add(core);}
+  g.userData.coin=c;return g;
+}
+{
+  const spots=[[-48,-30,8],[-50,-6,2],[-47,18,6],[-46,36,1],[-36,-18,3],[-38,6,0],[-33,26,5],[-44,-2,4]];
+  spots.forEach(([x,z,ci],i)=>{const c=COINS[ci];const m=makeCoin(c);
+    m.position.set(x,M.disc.t+c.t/2+(i>4?2.2:0),z);m.rotation.set((i%3-1)*.12,0,(i%2?.1:-.08));feed.add(m);});
+}
+// motor 28BYJ-48 detrás de la placa
+{
+  const g=new THREE.Group();
+  const body=cyl(M.motor.r,M.motor.r,M.motor.h,C.steel());body.position.y=-M.plate.t-M.motor.h/2;
+  const ears=box(M.motor.ears+8,1,7,C.steel());ears.position.y=-M.plate.t-.5;
+  const cap=box(17,M.motor.h-2,10,C.blueCap());cap.position.set(-M.motor.r-3,-M.plate.t-M.motor.h/2,0);
+  const shaft=cyl(2.5,2.5,6,C.steel());shaft.position.y=-1;
+  g.add(body,ears,cap,shaft);feed.add(g);
+  part('motor',g,{name:'Motor 28BYJ-48',rows:[['Cuerpo','Ø28 × 19 mm','dato'],['Eje','Ø5 mm','dato'],['Orejas','35 mm entre agujeros','dato'],['Paso','5,625°/64 → 4096 medios pasos/vuelta','dato'],['Par de arranque','300 gf·cm, margen ≈ 2,7×','calc']],
+    note:'En el modelo el cuerpo se dibujó centrado en el eje. Antes de cortar la placa, toma la posición real del eje en el plano del fabricante.'});
+  label(feed,'28BYJ-48 (Ø28 × 19)',new V3(-14,-24,0),'motor');
+}
+// patas del alimentador
+{
+  const g=new THREE.Group();
+  [[-50,55],[-50,-55],[45,55],[45,-55]].forEach(([u,z])=>{
+    const p=feed.localToWorld(new V3(u,-M.plate.t,z));const h=p.y-3;
+    const leg=cyl(3,3,h,C.mdf(),16);leg.position.set(p.x,3+h/2,p.z);g.add(leg);});
+  scene.add(g);part('placa',g);
+}
+feed.updateMatrixWorld(true);
+
+/* ===== canal (marco local: x a lo largo del canal, y normal al piso, z ancho) ===== */
+const chan=new THREE.Group();chan.position.copy(CH_S);chan.rotation.z=-M.chTilt*D2R;scene.add(chan);
+{
+  const L=M.ch.len,w=M.ch.inner,t=M.ch.wallT;
+  const g=new THREE.Group();
+  const floor=box(L,M.ch.floorT,w+2*t,C.mdf());floor.position.set(L/2,-M.ch.floorT/2,0);
+  const pad=box(100,M.ch.floorT,100,C.mdf());pad.position.set(M.camS,-M.ch.floorT/2-.01,0);
+  const wl=box(L,M.ch.wallH,t,C.mdfDark());wl.position.set(L/2,M.ch.wallH/2,w/2+t/2);
+  const wr=wl.clone();wr.position.z=-(w/2+t/2);
+  g.add(floor,pad,wl,wr);chan.add(g);
+  part('canal',g,{name:'Canal de bajada',rows:[['Pendiente','25° de partida','dato'],['Ancho interior','30 mm','calc'],['Paredes','6 mm de alto','calc'],['Largo','180 mm (plano: 150–200)','sup']],
+    note:'Superficie lisa: las rebabas de impresión frenan las monedas. El tramo bajo la cámara lleva un cuadro de 100 × 100 mm para apoyar el tubo.'});
+  label(chan,'Canal 30 mm · 25°',new V3(34,8,-18),'canal');
+  // tapa transparente
+  const lid=new THREE.Group();
+  [[0,62],[158,L]].forEach(([a,b])=>{const p=box(b-a,2,w+2*t,C.acrylic());p.position.set((a+b)/2,M.ch.wallH+1,0);lid.add(p);});
+  chan.add(lid);
+  part('tapa',lid,{name:'Tapa transparente',rows:[['Material','acrílico 2 mm','dato'],['Tira','35 × 200 mm','dato']],
+    note:'Evita que las monedas salten fuera del canal. Se interrumpe donde está el tubo de luz.'});
+  // patas del canal
+  const legs=new THREE.Group();
+  [[20,12],[20,-12],[150,12],[150,-12]].forEach(([s,z])=>{
+    const p=chan.localToWorld(new V3(s,-M.ch.floorT,z));const h=p.y-3;
+    const leg=cyl(2.5,2.5,h,C.mdf(),16);leg.position.set(p.x,3+h/2,p.z);legs.add(leg);});
+  scene.add(legs);part('canal',legs);
+}
+chan.updateMatrixWorld(true);
+
+/* cámara de luz */
+const tubeMat=C.white();
+const lidMat=mat({color:0xf0f0ec,roughness:.9,transparent:true,opacity:.35,depthWrite:false});
+const ledMat=C.led();
+let tubeGrp;
+{
+  const g=new THREE.Group();g.position.set(M.camS,0,0);chan.add(g);
+  const tube=cyl(M.tube.ri+1.5,M.tube.ri+1.5,M.tube.h,tubeMat,64,true);tube.position.y=M.tube.h/2;
+  const s=new THREE.Shape();s.absarc(0,0,M.tube.ri+3,0,Math.PI*2,false);
+  const lidG=plateWithHoles(s,[[0,0,6]],3);lidG.translate(0,M.tube.h+3,0);
+  const lidM=new THREE.Mesh(lidG,lidMat);
+  g.add(tube,lidM);tubeGrp=g;
+  part('tubo',[tube,lidM],{name:'Cámara de luz',rows:[['Tubo','Ø90 interior × 75 mm','calc'],['Interior','blanco mate','dato'],['Tapa','orificio Ø12 para la lente','dato'],['Ranuras de paso','32 × 6 mm en la base','dato']],
+    note:'Cerrada a la luz del salón. La luz rebota en el difusor y en las paredes antes de llegar a la moneda.'});
+  label(g,'Cámara de luz Ø90 × 75',new V3(-30,M.tube.h-6,-46),'tubo');
+
+  // LED + difusor
+  const led=cyl(M.tube.ri-.4,M.tube.ri-.4,8,ledMat,64,true);led.position.y=35;
+  const dif=cyl(40,40,40,C.diffuser(),64,true);dif.position.y=35;
+  const lg=new THREE.Group().add(led,dif);g.add(lg);
+  part('led',lg,{name:'Tira LED + difusor',rows:[['Tira','LED blanca 5 V, unos 30 cm','dato'],['Altura','a media altura del tubo','dato'],['Difusor','funda de papel mantequilla','dato'],['Consumo','≈ 0,5 A, mídelo','sup']],
+    note:'Siempre encendida y fija. Ningún LED apunta directo a la moneda. Si cambias la luz después de tomar las fotos de entrenamiento, hay que repetirlas.'});
+  label(g,'Tira LED + difusor',new V3(30,40,44),'led');
+
+  // fondo negro
+  const bf=new THREE.Mesh(new THREE.CircleGeometry(M.tube.ri,64),C.black());bf.rotation.x=-Math.PI/2;bf.position.y=.05;
+  g.add(bf);part('fondo',bf,{name:'Fondo negro mate',rows:[['Material','cartulina negra mate','dato'],['Montaje','pegada lisa al piso del canal','dato']],
+    note:'El negro mate da buen contraste con el borde de la moneda y no refleja.'});
+
+  // placa ESP32-S3 + cámara
+  const cg=new THREE.Group();
+  const board=box(54,1.6,25,C.pcbBlack());board.position.set(17,M.tube.h+3+.8,0);
+  const shield=box(18,2.4,20,C.steel());shield.position.set(30,M.tube.h+3+2.8,0);
+  const usb=box(7,3,9,C.steel());usb.position.set(43,M.tube.h+3+3,0);
+  const barrel=cyl(4,4,M.tube.h+3-M.lens,C.black(),24);barrel.position.y=M.lens+(M.tube.h+3-M.lens)/2;
+  const glass=cyl(2.6,2.6,.4,mat({color:0x2a4f6a,metalness:.4,roughness:.1}),24);glass.position.y=M.lens-.2;
+  cg.add(board,shield,usb,barrel,glass);g.add(cg);
+  part('cam',cg,{name:'ESP32-S3 + OV2640',rows:[['Lente → fondo','60 mm','dato'],['Encuadre','64,9 × 48,5 mm','calc'],['Resolución','≈ 9,9 px/mm en VGA','calc'],['Placa','54 × 25 mm aprox.','sup'],['Memoria','8 MB de PSRAM','dato']],
+    note:'La cámara va perpendicular al fondo, es decir inclinada 25° como el canal. La placa se dibujó con 54 × 25 mm según Cirkit Designer; mide la tuya.'});
+  label(g,'ESP32-S3 + OV2640 · lente a 60 mm',new V3(20,M.tube.h+8,0),'cam');
+
+  // campo de visión
+  const L=M.fov.long/2,S=M.fov.short/2,y=.3;
+  const pts=[],apex=new V3(0,M.lens,0),cs=[[L,S],[L,-S],[-L,-S],[-L,S]];
+  cs.forEach(([x,z])=>{pts.push(apex.clone(),new V3(x,y,z));});
+  for(let i=0;i<4;i++){const a=cs[i],b=cs[(i+1)%4];pts.push(new V3(a[0],y,a[1]),new V3(b[0],y,b[1]));}
+  const fovMat=new THREE.LineBasicMaterial({color:0x1f6f8b});
+  const fov=new THREE.LineSegments(new THREE.BufferGeometry().setFromPoints(pts),fovMat);
+  fov.name='fov';g.add(fov);
+}
+// luz interna del tubo
+const tubeLight=new THREE.PointLight(0xfff1d6,.55,140,1);tubeLight.position.set(M.camS,40,0);chan.add(tubeLight);
+
+/* compuerta en V + servo */
+const vgate=new THREE.Group();vgate.position.set(M.apexS,0,0);chan.add(vgate);
+{
+  const arm=Math.SQRT2*15;
+  // cada brazo va del vértice (0,0) a (-15, ±15)
+  [1,-1].forEach(sz=>{const b=box(arm,3,1.6,C.black());b.position.set(-7.5,1.5,7.5*sz);b.rotation.y=45*D2R*sz;vgate.add(b);});
+  const horn=box(2,8,6,mat({color:0xf2f2f2}));horn.position.set(-6,-5,0);vgate.add(horn);
+  part('v',vgate,{name:'Compuerta en V',rows:[['Brazos','a 90°, cruzan los 30 mm del canal','dato'],['Alto','3 mm','dato'],['Centrado','r × √2 antes del vértice','calc']],
+    note:'Una moneda redonda que llega a la V queda centrada a lo ancho sin importar su tamaño. Al abrir, la V baja por debajo del piso.'});
+  label(chan,'Compuerta en V',new V3(M.apexS+2,6,22),'v');
+
+  const sg=new THREE.Group();
+  const body=box(22.2,22.7,11.8,C.servo());body.position.set(M.apexS-8,-M.ch.floorT-11.35-6,0);
+  const tabs=box(32,2.5,11.8,C.servo());tabs.position.set(M.apexS-8,-M.ch.floorT-8,0);
+  sg.add(body,tabs);chan.add(sg);
+  part('servo',sg,{name:'Servo SG90',rows:[['Tamaño','22,2 × 11,8 × 31 mm aprox.','dato'],['Par','1,8 kg·cm a 4,8 V','dato'],['Velocidad','60° en 0,1 s','dato'],['Señal','GPIO 42 (confirma en tu placa)','sup']],
+    note:'Va debajo del canal; el brazo sale por una ranura del piso y mueve la V.'});
+  label(chan,'Servo SG90',new V3(M.apexS-8,-36,0),'servo');
+}
+
+/* ULN2003 */
+{
+  const g=new THREE.Group();
+  const b=box(23,1.6,17,C.pcbGreen());b.position.set(-30,3.8,70);
+  const chip=box(10,2,5,C.pcbBlack());chip.position.set(-30,5.6,70);
+  g.add(b,chip);scene.add(g);
+  part('uln',g,{name:'Módulo ULN2003',rows:[['Placa','23 × 17 mm según la tienda','dato'],['Entradas','GPIO 1, 2, 14, 21','dato']],
+    note:'Muchos módulos ULN2003 son más grandes que la medida de la tienda. Mide el tuyo antes de fijar su lugar.'});
+  label(g,'ULN2003',new V3(-30,8,70),'uln');
+}
+
+/* ===================== ETAPA 2: embudo fijo + carrusel de frascos ===================== */
+const FLOOR=-100;
+const CAR_C=new V3(283,-70,0);          // centro del carrusel, a la altura de la cara superior del plato
+const JAR={r:22.5,h:60,R:85,step:40};
+const FUN=new V3(198,52,0);             // boca del embudo
+// mesa de la estación
+{
+  const g=new THREE.Group();
+  [[-74,79],[-74,-79],[159,79],[159,-79]].forEach(([x,z])=>{const l=box(12,100,12,C.mdfDark());l.position.set(x,FLOOR+50,z);g.add(l);});
+  scene.add(g);
+  part('mesa',[g,base],{name:'Mesa de la estación',rows:[['Alto','100 mm','calc'],['Tablero','MDF 3 mm, 245 × 170 mm','sup']],
+    note:'El alto sale de apilar la caída: el canal termina a 59 mm sobre el tablero y el frasco mide 60 mm sobre un plato a 30 mm del piso. Con 100 mm la moneda cae por el embudo y entra al frasco.'});
+}
+// embudo fijo
+{
+  const g=new THREE.Group();
+  const cone=cyl(30,17,28,mat({color:0xd9dde0,metalness:.3,roughness:.4,side:THREE.DoubleSide}),40,true);cone.position.set(FUN.x,FUN.y-16,0);
+  const tube=cyl(17,17,24,mat({color:0xd9dde0,metalness:.3,roughness:.4,side:THREE.DoubleSide}),40,true);tube.position.set(FUN.x,FUN.y-42,0);
+  const arm=box(40,4,8,C.mdfDark());arm.position.set(FUN.x-30,FUN.y-14,26);
+  g.add(cone,tube,arm);scene.add(g);
+  part('embudo',g,{name:'Embudo fijo',rows:[['Boca','Ø60 mm','sup'],['Salida','Ø34 mm','calc'],['Por qué Ø34','moneda de 1000 (26,7) + holgura','calc']],
+    note:'Queda fijo bajo la salida del canal. No gira: el que gira es el carrusel, que pone el frasco correcto debajo.'});
+  label(scene,'Embudo fijo · salida Ø34',new V3(FUN.x+10,FUN.y+12,40),'embudo');
+}
+// carrusel
+const carousel=new THREE.Group();carousel.position.copy(CAR_C);scene.add(carousel);
+const jars=[];
+{
+  const housing=cyl(60,60,25,C.mdfDark(),48);housing.position.set(CAR_C.x,FLOOR+12.5,0);scene.add(housing);
+  const plate=cyl(115,115,5,C.mdf(),72);plate.position.y=-2.5;
+  const hub=cyl(10,10,6,C.steel(),24);hub.position.y=3;
+  carousel.add(plate,hub);
+  part('carrusel',[plate,hub,housing],{name:'Carrusel de 9 frascos',rows:[['Plato','Ø230 × 5 mm','calc'],['Radio de frascos','85 mm, uno cada 40°','calc'],['Motor','28BYJ-48 + ULN2003 dentro de la base','dato'],['40° por frasco','455,1 medios pasos','calc'],['Giro 180°','2048 medios pasos exactos','calc']],
+    note:'Un solo motor pone bajo el embudo el frasco de la moneda identificada. Como 40° no da un número entero de pasos, calcula cada posición desde un sensor de inicio (fin de carrera o Hall) en vez de sumar giros. El par sobre el plato no está medido: si el 28BYJ-48 patina con los frascos llenos, apoya el plato en un rodamiento de tornamesa o cambia a un NEMA 17.'});
+  label(scene,'Carrusel Ø230 · 9 frascos',new V3(CAR_C.x+60,CAR_C.y+2,130),'carrusel');
+  const glass=mat({color:0xcfe6f0,transparent:true,opacity:.3,roughness:.1,side:THREE.DoubleSide,depthWrite:false});
+  const curbM=C.mdfDark();
+  COINS.forEach((c,k)=>{
+    const a=k*JAR.step*D2R;
+    const g=new THREE.Group();g.position.set(JAR.R*Math.cos(a),0,-JAR.R*Math.sin(a));
+    const wall=cyl(JAR.r,JAR.r,JAR.h,glass,40,true);wall.position.y=JAR.h/2;
+    const bottom=cyl(JAR.r,JAR.r,1.5,glass,40);bottom.position.y=.75;
+    const tagM=mat({color:c.ring==='gold'?0xd4ae55:0xc9cdd1,metalness:.3});
+    const band=cyl(JAR.r+.3,JAR.r+.3,8,tagM,40,true);band.position.y=JAR.h-10;band.material.side=THREE.DoubleSide;
+    g.add(wall,bottom,band);carousel.add(g);
+    // tope en C abierto hacia afuera, para que el carro saque el frasco tirando hacia atrás
+    const th=Math.atan2(-Math.cos(a),Math.sin(a));
+    const curb=cyl(JAR.r+3,JAR.r+3,4,curbM,32,true,th-100*D2R,200*D2R);curb.material.side=THREE.DoubleSide;
+    curb.position.set(g.position.x,2,g.position.z);carousel.add(curb);
+    const el=document.createElement('div');el.className='lbl3d jar';el.textContent=c.name;
+    el.addEventListener('click',ev=>{ev.stopPropagation();select('frascos');});
+    const l=new THREE.CSS2DObject(el);l.position.set(0,JAR.h+6,0);g.add(l);
+    jars.push({g,k,coins:[],h:1.5,slot:g.position.clone()});
+    part('frascos',[wall,bottom,band,curb],{name:'Frascos',rows:[['Frasco','Ø45 × 60 mm','sup'],['Boca interior','≥ Ø41 mm, mayor que la salida del embudo (Ø34)','calc'],['Separación','58 mm entre centros a r = 85','calc']],
+      note:'El tamaño del frasco es un supuesto: tiene que ser más ancho que la salida del embudo. Cada frasco va en un tope en C sobre el plato para que no se corra al girar.'});
+  });
+}
+// electrónica de la estación
+const espStation=new V3(78,6,-64);
+{
+  const g=new THREE.Group();
+  const b=box(52,1.6,28,C.pcbBlack());b.position.set(espStation.x,3.8,espStation.z);
+  const sh=box(18,2.4,20,C.steel());sh.position.set(espStation.x+14,5.8,espStation.z);
+  g.add(b,sh);scene.add(g);
+  part('esp2',g,{name:'ESP32 de la estación',rows:[['Tarea','mover el carrusel','sup'],['Enlace','ESP-NOW con el ESP32-S3','dato'],['Mensaje','≤ 250 bytes por envío','dato']],
+    note:'Reparto propuesto para no cargar el ESP32-S3: el S3 identifica y manda el tipo de moneda; este ESP32 gira el carrusel al frasco que corresponde. Si solo tienen dos placas, el S3 puede mover también el carrusel si le quedan 4 GPIO libres.'});
+  label(scene,'ESP32 estación',new V3(espStation.x,8,espStation.z-16),'esp2');
+  const v=new THREE.Group();
+  const vb=box(49,1.6,32,mat({color:0x2a2f35}));vb.position.set(110,3.8,58);
+  const m1=cyl(2.5,2.5,1.5,C.steel(),16);m1.position.set(98,5.2,52);
+  const m2=m1.clone();m2.position.set(122,5.2,52);
+  const spk=cyl(9,9,4,C.pcbBlack(),24);spk.position.set(110,6.6,64);
+  v.add(vb,m1,m2,spk);scene.add(v);
+  part('voz',v,{name:'Módulo de voz DF2301Q',rows:[['Placa','49 × 32 mm','dato'],['Interfaz','I2C (0x64) o UART, 3,3–5 V','dato'],['Comandos propios','17 aprendidos + 1 palabra de activación','dato'],['Micrófonos','2','dato']],
+    note:'Se eligió porque ESP-SR (MultiNet) solo reconoce comandos en inglés y chino. El DF2301Q aprende comandos grabados con tu voz: alcanzan los 9 frascos, por ejemplo “quinientos nueva”. La palabra de activación de fábrica es “Hello robot”; se puede reemplazar por una aprendida. Prueben el reconocimiento con el ruido del salón.'});
+  label(scene,'Voz DF2301Q',new V3(110,8,72),'voz');
+  const u2=new THREE.Group();
+  const ub=box(23,1.6,17,C.pcbGreen());ub.position.set(CAR_C.x-30,FLOOR+.8,-150);u2.add(ub);scene.add(u2);
+  part('uln',u2);
+}
+// burbuja de voz
+const bubbleEl=document.createElement('div');bubbleEl.className='bubble';bubbleEl.textContent='';
+const bubble=new THREE.CSS2DObject(bubbleEl);bubble.position.set(110,40,70);bubble.visible=false;scene.add(bubble);
+
+/* ===================== ETAPAS 3 y 4: pista, carro, obstáculos ===================== */
+const floorMat=mat({color:0xdfe2dc,roughness:1});
+const floor=new THREE.Mesh(new THREE.PlaneGeometry(3300,1600),floorMat);floor.rotation.x=-Math.PI/2;floor.position.set(1350,FLOOR-.4,0);scene.add(floor);
+// línea negra guía (cinta)
+const PICK_X=CAR_C.x+JAR.R, GRASP=176, PICK_CAR_X=PICK_X+GRASP, START=[960,-350];
+{
+  const g=new THREE.Group(),lm=C.black();
+  const seg=(x1,z1,x2,z2)=>{const L=Math.hypot(x2-x1,z2-z1);const b=box(L+19,.6,19,lm);b.position.set((x1+x2)/2,FLOOR+.3,(z1+z2)/2);b.rotation.y=Math.atan2(-(z2-z1),x2-x1);g.add(b);};
+  seg(1060,-350,720,-350);seg(720,-350,720,0);seg(720,0,PICK_CAR_X-95,0);
+  const t=box(19,.6,120,lm);t.position.set(PICK_CAR_X-95,FLOOR+.3,0);g.add(t);
+  scene.add(g);
+  part('linea',g,{name:'Línea guía',rows:[['Material','cinta negra sobre piso claro','sup'],['Fin','barra en T: el carro frena con la pinza frente al frasco','sup']],
+    note:'El carro sale de su puesto y sigue la línea con sensores TCRT5000 hasta el punto de recogida. Como el carrusel siempre presenta el frasco en el mismo punto, el carro hace siempre el mismo trayecto.'});
+  label(scene,'Línea guía hasta el carrusel',new V3(840,FLOOR+4,-370),'linea');
+}
+// obstáculos y meta
+const OBST=[[1000,-80],[1450,130],[1900,-90],[2350,120]];
+{
+  const g=new THREE.Group();
+  OBST.forEach(([x,z],i)=>{const b=box(120,150,120,mat({color:0x8f5530,roughness:.8}));b.position.set(x,FLOOR+75,z);g.add(b);
+    label(scene,'Obstáculo '+(i+1),new V3(x,FLOOR+160,z),'obst');});
+  scene.add(g);
+  part('obst',g,{name:'Obstáculos',rows:[['Cantidad','3 a 5 (aquí 4)','dato'],['Tamaño','120 × 150 × 120 mm','sup']],
+    note:'El reglamento no da su tamaño ni su posición. El modelo usa cajas en zigzag para mostrar el recorrido; la lógica de esquivar no depende de dónde estén.'});
+  const cv=document.createElement('canvas');cv.width=cv.height=64;const cx=cv.getContext('2d');
+  for(let i=0;i<8;i++)for(let j=0;j<8;j++){cx.fillStyle=(i+j)%2?'#1b1d22':'#f4f4f1';cx.fillRect(i*8,j*8,8,8);}
+  const tex=new THREE.CanvasTexture(cv);tex.magFilter=THREE.NearestFilter;
+  const goal=new THREE.Mesh(new THREE.PlaneGeometry(400,400),new THREE.MeshStandardMaterial({map:tex,roughness:1}));
+  goal.rotation.x=-Math.PI/2;goal.position.set(2760,FLOOR+.3,0);
+  const pole=cyl(4,4,320,C.steel(),12);pole.position.set(2960,FLOOR+160,-200);
+  const flag=box(2,70,110,mat({color:0xb3261e,side:THREE.DoubleSide}));flag.position.set(2960,FLOOR+280,-145);
+  const mg=new THREE.Group().add(goal,pole,flag);scene.add(mg);
+  part('meta',mg,{name:'Meta',rows:[['Zona','400 × 400 mm','sup']],note:'Punto final de la Etapa 4. El carro se detiene sobre la zona con el frasco en la pinza.'});
+  label(scene,'Meta',new V3(2960,FLOOR+340,-200),'meta');
+}
+// carro
+const car=new THREE.Group();scene.add(car);
+let jawL,jawR,pan,usCone;
+{
+  const chassisM=mat({color:0xcfe6f0,transparent:true,opacity:.55,roughness:.15});
+  const g=new THREE.Group();
+  const deck=box(212,3,152,chassisM);deck.position.y=40;
+  const deck2=box(180,3,140,chassisM);deck2.position.set(-5,80,0);
+  g.add(deck,deck2);
+  [[-80,60],[-80,-60],[70,60],[70,-60]].forEach(([x,z])=>{const s=cyl(2.5,2.5,37,C.steel(),10);s.position.set(x,60,z);g.add(s);});
+  const motM=mat({color:0xe0b42a,roughness:.6});
+  [-1,1].forEach(sz=>{const m=box(65,19,22,motM);m.position.set(-50,28,sz*48);g.add(m);});
+  const batt=box(77,20,41,mat({color:0x2b2f36}));batt.position.set(-20,52,0);
+  const drv=box(40,22,40,mat({color:0xb3261e,roughness:.6}));drv.position.set(45,53,0);
+  const esp=box(52,1.6,28,C.pcbBlack());esp.position.set(-30,82.5,0);
+  g.add(batt,drv,esp);
+  car.add(g);
+  part('carro',g,{name:'Carro 2WD',rows:[['Chasis','212 × 152 mm, acrílico','dato'],['Motores','2 × TT de 3–6 V','dato'],['Control','ESP32 + puente H','sup'],['Batería','2 celdas (ilustrativo)','sup']],
+    note:'Chasis de kit 2WD comercial con rueda loca adelante. El ESP32 del carro recibe por ESP-NOW la orden de salir y maneja motores, sensores de línea, ultrasonido y pinza.'});
+  const wheels=new THREE.Group();
+  const wm=mat({color:0x1e1f22,roughness:.9}),hm=mat({color:0xe0b42a});
+  [-1,1].forEach(sz=>{const w=cyl(35,35,27,wm,32);w.rotation.x=Math.PI/2;w.position.set(-50,35,sz*91);const h=cyl(15,15,28,hm,16);h.rotation.x=Math.PI/2;h.position.copy(w.position);wheels.add(w,h);});
+  const caster=new THREE.Mesh(new THREE.SphereGeometry(12,16,12),C.steel());caster.position.set(80,12,0);
+  const cpost=cyl(8,8,16,C.steel(),12);cpost.position.set(80,30,0);
+  wheels.add(caster,cpost);car.add(wheels);
+  part('ruedas',wheels,{name:'Ruedas',rows:[['Ruedas motrices','Ø70 × 27 mm','dato'],['Apoyo','rueda loca omnidireccional','dato']],note:'Tracción diferencial: para girar en el sitio, una rueda avanza y la otra retrocede.'});
+  const ls=new THREE.Group();
+  [-1,1].forEach(sz=>{const s=box(10,4,14,C.pcbBlack());s.position.set(95,8,sz*12);ls.add(s);});
+  car.add(ls);
+  part('sensl',ls,{name:'Sensores de línea TCRT5000',rows:[['Cantidad','2, a los lados de la cinta','sup'],['Altura al piso','pocos mm','sup']],note:'Miden el reflejo infrarrojo del piso: la cinta negra refleja menos que el piso claro. Ajusta su umbral con el potenciómetro del módulo sobre tu piso real.'});
+  // pinza
+  const gr=new THREE.Group();
+  const sv=box(40.7,42.9,19.7,C.servo());sv.position.set(122,58,0);
+  const palm=box(10,30,64,C.steel());palm.position.set(146,60,0);
+  jawL=box(60,30,4,C.steel());jawR=jawL.clone();
+  jawL.position.set(GRASP,60,29.5);jawR.position.set(GRASP,60,-29.5);
+  gr.add(sv,palm,jawL,jawR);car.add(gr);
+  part('pinza',gr,{name:'Pinza con servo MG995',rows:[['Apertura','55 mm (95 con extensión)','dato'],['Largo','108 mm cerrada','dato'],['MG995','40,7 × 19,7 × 42,9 mm','dato'],['Par','9,4 kg·cm a 4,8 V','dato'],['Corriente','hasta 1,2 A con carga','dato']],
+    note:'Agarra el frasco a media altura y el carro retrocede para sacarlo del tope en C. Alimenta el MG995 directo de la batería por un regulador de 5–6 V, no desde el pin de 3,3 V del ESP32.'});
+  label(car,'Pinza (MG995)',new V3(GRASP,98,0),'pinza');
+  // ultrasonido sobre servo
+  pan=new THREE.Group();pan.position.set(78,84,0);
+  const ps=box(12,23,22,C.servo());ps.position.y=11;
+  const us=box(1.6,20,45,C.pcbBlack());us.position.set(4,34,0);
+  const t1=cyl(8,8,12,C.steel(),20);t1.rotation.z=Math.PI/2;t1.position.set(10,34,13);
+  const t2=t1.clone();t2.position.z=-13;
+  const L=400,cg=new THREE.ConeGeometry(L*Math.tan(7.5*D2R),L,24,1,true);cg.translate(0,-L/2,0);cg.rotateZ(Math.PI/2);
+  usCone=new THREE.Mesh(cg,mat({color:0x1f6f8b,transparent:true,opacity:.12,side:THREE.DoubleSide,depthWrite:false}));usCone.position.set(16,34,0);
+  pan.add(ps,us,t1,t2,usCone);car.add(pan);
+  part('ultra',[ps,us,t1,t2],{name:'HC-SR04 sobre SG90',rows:[['Alcance','2 a 400 cm','dato'],['Ángulo','15°','dato'],['Tamaño','45 × 20 × 15 mm','dato'],['Disparo','≥ 10 µs, cada ≥ 60 ms','dato'],['Distancia','tiempo × 340 m/s ÷ 2','dato']],
+    note:'Va por encima del frasco para que la pinza no le tape el haz. Al ver un obstáculo cerca, el carro se detiene, el SG90 gira el sensor a izquierda y derecha y el carro sigue por el lado más libre. El HC-SR04 trabaja a 5 V: baja su pin ECHO a 3,3 V con un divisor antes de entrar al ESP32.'});
+  label(car,'HC-SR04 + SG90',new V3(78,135,0),'ultra');
+  label(car,'Carro 2WD',new V3(-60,95,-70),'carro');
+}
+function carPose(x,z,h){car.position.set(x,FLOOR,z);car.rotation.y=h;}
+carPose(START[0],START[1],Math.PI);
+// enlace ESP-NOW (línea punteada estación → carro)
+const linkGeo=new THREE.BufferGeometry().setFromPoints([new V3(),new V3()]);
+const link=new THREE.Line(linkGeo,new THREE.LineDashedMaterial({color:0x1f6f8b,dashSize:20,gapSize:14}));link.visible=false;scene.add(link);
+const linkLbl=label(scene,'ESP-NOW → carro',new V3(),'esp2');linkLbl.visible=false;
+
+/* ---------- vista de cámara ---------- */
+const camView=new THREE.PerspectiveCamera(2*Math.atan((M.fov.short/2)/M.lens)/D2R,M.fov.long/M.fov.short,1,400);
+{
+  const p=chan.localToWorld(new V3(M.camS,M.lens-.5,0));camView.position.copy(p);
+  const zDir=new V3(0,0,1).applyQuaternion(chan.getWorldQuaternion(new THREE.Quaternion()));
+  camView.up.copy(zDir);camView.lookAt(chan.localToWorld(new V3(M.camS,0,0)));
+}
+
+/* ---------- UI: piezas ---------- */
+// Etapas 3 y 4 (voz, carro, pista) se ocultan por ahora; poner COIN_ONLY=false para mostrarlas
+const COIN_ONLY=true;
+const HIDDEN=COIN_ONLY?['voz','linea','carro','ruedas','sensl','pinza','ultra','obst','meta']:[];
+if(COIN_ONLY){
+  HIDDEN.forEach(id=>parts[id]&&parts[id].objs.forEach(o=>{o.visible=false;}));
+  scene.traverse(o=>{if(o.isCSS2DObject&&HIDDEN.includes(o.userData.part))o.visible=false;});
+  car.visible=false;floor.visible=false;grid2.visible=false;
+}
+const order=['disco','tolva','placa','motor','canal','tapa','tubo','led','fondo','cam','v','servo','uln','mesa','embudo','carrusel','frascos','esp2','voz','linea','carro','ruedas','sensl','pinza','ultra','obst','meta'].filter(id=>!HIDDEN.includes(id));
+const partsEl=document.getElementById('parts'),cardEl=document.getElementById('card');
+const tagName={dato:'DATO',calc:'CÁLCULO',sup:'ILUSTRATIVO'};
+order.forEach(id=>{const b=document.createElement('button');b.type='button';b.textContent=parts[id].info.name;b.dataset.part=id;b.setAttribute('aria-pressed','false');b.onclick=()=>select(id,true);partsEl.appendChild(b);});
+let selected=null;
+function setGlow(id,on){
+  if(!id)return;
+  pickables.forEach(m=>{if(m.userData.part!==id)return;const mm=m.material;if(!mm.emissive)return;
+    if(on){if(mm.userData.e0===undefined){mm.userData.e0=mm.emissive.getHex();mm.userData.ei0=mm.emissiveIntensity;}mm.emissive.setHex(0xc06a2a);mm.emissiveIntensity=.55;}
+    else if(mm.userData.e0!==undefined){mm.emissive.setHex(mm.userData.e0);mm.emissiveIntensity=mm.userData.ei0;delete mm.userData.e0;}});
+}
+function select(id,focus){
+  setGlow(selected,false);selected=id;setGlow(id,true);
+  partsEl.querySelectorAll('button').forEach(b=>b.setAttribute('aria-pressed',b.dataset.part===id?'true':'false'));
+  const inf=parts[id].info;
+  cardEl.innerHTML='';
+  const h=document.createElement('h3');h.textContent=inf.name;cardEl.appendChild(h);
+  const dl=document.createElement('dl');
+  inf.rows.forEach(([k,v,t])=>{const dt=document.createElement('dt');dt.textContent=k;const dd=document.createElement('dd');dd.textContent=v+' ';const s=document.createElement('span');s.className='tag '+t;s.textContent=tagName[t];dd.appendChild(s);dl.append(dt,dd);});
+  cardEl.appendChild(dl);
+  const p=document.createElement('p');p.className='muted small';p.textContent=inf.note;cardEl.appendChild(p);
+  if(focus){const bb=new THREE.Box3();parts[id].objs.forEach(o=>{o.updateMatrixWorld(true);bb.expandByObject(o);});const c=bb.getCenter(new V3());
+    const off=camera.position.clone().sub(controls.target);fly(c.clone().add(off.setLength(Math.max(160,bb.getSize(new V3()).length()*2.4))),c);}
+}
+select('disco');
+
+/* monedas */
+const coinsEl=document.getElementById('coins');
+COINS.forEach(c=>{const d=document.createElement('div');d.className='coin';d.dataset.coin=c.id;
+  const i=document.createElement('i');const px=c.d*1.05;i.style.width=i.style.height=px+'px';
+  i.style.background=c.core?`radial-gradient(circle, ${c.core==='gold'?'#d4ae55':'#c9cdd1'} 0 30%, ${c.ring==='gold'?'#d4ae55':'#c9cdd1'} 31%)`:(c.ring==='gold'?'#d4ae55':'#c9cdd1');
+  const s=document.createElement('span');s.innerHTML='<b></b><br>';s.firstChild.textContent=c.name;s.appendChild(document.createTextNode('Ø'+fmt(c.d)+' × '+fmt(c.t)));
+  d.append(i,s);coinsEl.appendChild(d);});
+
+/* ---------- picking ---------- */
+const ray=new THREE.Raycaster(),ptr=new THREE.Vector2();let down=null;
+renderer.domElement.addEventListener('pointerdown',e=>{down=[e.clientX,e.clientY];});
+renderer.domElement.addEventListener('pointerup',e=>{
+  if(!down||Math.hypot(e.clientX-down[0],e.clientY-down[1])>5)return;
+  const r=renderer.domElement.getBoundingClientRect();
+  ptr.set((e.clientX-r.left)/r.width*2-1,-(e.clientY-r.top)/r.height*2+1);
+  ray.setFromCamera(ptr,camera);
+  const hit=ray.intersectObjects(pickables,false).find(h=>!HIDDEN.includes(h.object.userData.part)&&!(xray&&(h.object.material===tubeMat||h.object.material===lidMat)));
+  if(hit)select(hit.object.userData.part);
+});
+
+/* ---------- vistas ---------- */
+let flight=null;
+function fly(pos,target){flight={p0:camera.position.clone(),t0:controls.target.clone(),p1:pos,t1:target,t:0};if(reduce){flight.t=1;}}
+const VIEWS={
+  all:()=>[new V3(520,560,820),new V3(150,-10,0)],
+  iso:()=>[new V3(-230,330,430),new V3(70,100,0)],
+  st2:()=>[new V3(620,180,520),new V3(270,-40,0)],
+  arena:()=>[new V3(1500,2300,2000),new V3(1650,-100,0)],
+  side:()=>[new V3(170,40,820),new V3(170,40,0)],
+  cam:()=>{const c=chan.localToWorld(new V3(M.camS,30,0));const n=new V3(0,1,0).applyQuaternion(chan.quaternion);return [c.clone().add(n.multiplyScalar(170)).add(new V3(40,0,260)),c];}
+};
+document.getElementById('views').addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;
+  document.querySelectorAll('#views button').forEach(x=>x.setAttribute('aria-pressed',x===b?'true':'false'));
+  const [p,t]=VIEWS[b.dataset.view]();fly(p,t);});
+
+/* ---------- toggles ---------- */
+let xray=true,showInset=true;
+const fovObj=tubeGrp.getObjectByName('fov');
+const insetEl=document.getElementById('inset');
+document.getElementById('tLabels').onchange=e=>viewer.classList.toggle('hide-labels',!e.target.checked);
+document.getElementById('tXray').onchange=e=>{xray=e.target.checked;tubeMat.opacity=xray?.22:1;tubeMat.transparent=xray;tubeMat.depthWrite=!xray;tubeMat.needsUpdate=true;lidMat.opacity=xray?.35:1;lidMat.transparent=xray;lidMat.depthWrite=!xray;lidMat.needsUpdate=true;};
+document.getElementById('tFov').onchange=e=>{fovObj.visible=e.target.checked;};
+document.getElementById('tInset').onchange=e=>{showInset=e.target.checked;insetEl.hidden=!showInset;};
+let follow=false;document.getElementById('tFollow').onchange=e=>{follow=e.target.checked;};
+
+/* ---------- tema ---------- */
+function applyTheme(){
+  const cs=getComputedStyle(document.documentElement);
+  const bg=cs.getPropertyValue('--scene').trim()||'#e9ece7';
+  const gr=cs.getPropertyValue('--grid').trim()||'#c4cbc6';
+  const sig=cs.getPropertyValue('--sig').trim()||'#1f6f8b';
+  scene.background=new THREE.Color(bg);
+  grid.material.color=new THREE.Color(gr);grid2.material.color=new THREE.Color(gr);
+  floorMat.color=new THREE.Color(cs.getPropertyValue('--floor').trim()||'#dfe2dc');
+  fovObj.material.color=new THREE.Color(sig);
+}
+applyTheme();
+matchMedia('(prefers-color-scheme: dark)').addEventListener('change',applyTheme);
+new MutationObserver(applyTheme).observe(document.documentElement,{attributes:true,attributeFilter:['data-theme']});
+
+/* ---------- animación del recorrido ---------- */
+let queue=[];function nextType(){if(!queue.length){queue=COINS.slice().sort(()=>Math.random()-.5);}return queue.pop();}
+function putInPocket(pk,c){const m=makeCoin(c);m.position.set(0,c.t/2,0);pk.anchor.add(m);pk.coin=m;}
+function pocketWorldY(pk){return pk.anchor.getWorldPosition(new V3()).y;}
+function topPocket(){return pockets.reduce((a,b)=>pocketWorldY(b)>pocketWorldY(a)?b:a);}
+function bottomPocket(){return pockets.reduce((a,b)=>pocketWorldY(b)<pocketWorldY(a)?b:a);}
+feed.updateMatrixWorld(true);
+{const top=topPocket();pockets.forEach(pk=>{if(pk!==top)putInPocket(pk,nextType());});}
+
+const stagesEl=[...document.querySelectorAll('#stages li')];
+const coinName=document.getElementById('coinName'),coinInfo=document.getElementById('coinInfo');
+function setStage(i){stagesEl.forEach((li,k)=>li.classList.toggle('on',k===i));}
+function setCoinChip(id){coinsEl.querySelectorAll('.coin').forEach(d=>d.classList.toggle('on',d.dataset.coin===id));}
+
+const DUR={rotate:1.1,drop:.6,slide:1.1,photo:1.4,exit:1.7,rest:.35};
+let phase='rotate',pt=0,spin0=0,active=null,dropPath=null,stopS=0,playing=!reduce,speed=1,stepOnce=false;
+const ease=x=>x<.5?2*x*x:1-Math.pow(-2*x+2,2)/2;
+const tmpQ=new THREE.Quaternion();
+
+function beginRotate(){phase='rotate';pt=0;spin0=spin.rotation.y;setStage(0);setProj(0);}
+function endRotate(){
+  feed.updateMatrixWorld(true);
+  const bot=bottomPocket();if(!bot.coin)putInPocket(bot,nextType());
+  const top=topPocket();
+  if(!top.coin){beginRotate();return;}
+  active=top.coin;top.coin=null;
+  const c=active.userData.coin;
+  scene.attach(active);
+  const n=new V3(0,1,0).applyQuaternion(feed.quaternion);
+  const p0=active.position.clone();
+  const p1=p0.clone().sub(n.clone().multiplyScalar(M.plate.t+c.t+3));
+  const p2=chan.localToWorld(new V3(12,c.t/2,0));
+  dropPath={p0,p1,p2,q0:active.quaternion.clone(),q2:chan.getWorldQuaternion(new THREE.Quaternion())};
+  coinName.textContent='¿?';coinInfo.textContent='cae por el orificio hacia el canal';setCoinChip(null);
+  phase='drop';pt=0;setStage(1);
+}
+function update(dt){
+  if(flight){flight.t=Math.min(1,flight.t+dt/.7);const k=ease(flight.t);camera.position.lerpVectors(flight.p0,flight.p1,k);controls.target.lerpVectors(flight.t0,flight.t1,k);if(flight.t>=1)flight=null;}
+  if(!playing&&!stepOnce)return;
+  pt+=dt*speed;carouselTick(dt*speed);
+  if(phase==='rotate'){
+    const k=Math.min(1,pt/DUR.rotate);spin.rotation.y=spin0+ease(k)*Math.PI/2;
+    if(k>=1)endRotate();
+  }else if(phase==='drop'){
+    const k=Math.min(1,pt/DUR.drop),d=dropPath;
+    if(k<.3){active.position.lerpVectors(d.p0,d.p1,k/.3);}
+    else{const u=(k-.3)/.7;const ctrl=new V3(d.p1.x+6,d.p1.y,0);
+      active.position.set((1-u)*(1-u)*d.p1.x+2*(1-u)*u*ctrl.x+u*u*d.p2.x,(1-u)*(1-u)*d.p1.y+2*(1-u)*u*ctrl.y+u*u*d.p2.y,(1-u)*(1-u)*d.p1.z+2*(1-u)*u*ctrl.z+u*u*d.p2.z);}
+    active.quaternion.copy(tmpQ.copy(d.q0).slerp(d.q2,ease(k)));
+    if(k>=1){chan.attach(active);const c=active.userData.coin;active.position.set(12,c.t/2,0);active.quaternion.identity();
+      stopS=M.apexS-(c.d/2+.8)*Math.SQRT2;phase='slide';pt=0;setStage(2);coinInfo.textContent='desliza por el canal a 25°';}
+  }else if(phase==='slide'){
+    const k=Math.min(1,pt/DUR.slide);active.position.x=12+(stopS-12)*k*k;active.rotation.y=k*1.2;
+    if(k>=1){phase='photo';pt=0;setStage(3);coinInfo.textContent='quieta contra la V · tomando la foto';}
+  }else if(phase==='photo'){
+    const k=Math.min(1,pt/DUR.photo);
+    const f=k>.25&&k<.4;ledMat.emissiveIntensity=f?1.8:.9;tubeLight.intensity=f?1.1:.55;insetEl.classList.toggle('flash',f);
+    if(k>.45&&coinName.textContent==='¿?'){const c=active.userData.coin;carouselTo(COINS.indexOf(c),'drop');coinName.textContent=c.name;coinInfo.textContent='Ø'+fmt(c.d)+' × '+fmt(c.t)+' mm · '+Math.round(c.d*9.9)+' px de ancho en VGA';setCoinChip(c.id);}
+    if(k>=1){phase='exit';pt=0;setStage(4);}
+  }else if(phase==='exit'){
+    const k=Math.min(1,pt/DUR.exit);
+    vgate.position.y=k<.12?-5*(k/.12):(k>.8?-5*(1-(k-.8)/.2):-5);
+    if(k<.55){const u=k/.55;active.position.x=stopS+(M.ch.len+2-stopS)*u*u;}
+    else{
+      const c=active.userData.coin,j=jars[COINS.indexOf(c)];
+      if(active.parent!==scene){scene.attach(active);active.userData.fall=active.position.clone();active.userData.q0=active.quaternion.clone();
+        active.userData.off=new V3((Math.random()-.5)*8,0,(Math.random()-.5)*8);setProj(1);coinInfo.textContent='cae por el embudo al frasco de '+c.name;}
+      const u=(k-.55)/.45,a=active.userData.fall,b=FUN.clone();
+      if(u<.4){const v=u/.4;active.position.set(a.x+(b.x-a.x)*v,a.y+(b.y-a.y)*v*v+10*v*(1-v),a.z+(b.z-a.z)*v);}
+      else{const v=(u-.4)/.6;const e=j.g.localToWorld(active.userData.off.clone().setY(j.h+c.t/2));active.position.set(b.x+(e.x-b.x)*v,b.y+(e.y-b.y)*v*v,b.z+(e.z-b.z)*v);}
+      active.quaternion.copy(tmpQ.copy(active.userData.q0).slerp(carousel.quaternion,Math.min(1,u*1.6)));
+    }
+    if(k>=1){vgate.position.y=0;const c=active.userData.coin,j=jars[COINS.indexOf(c)];
+      j.g.attach(active);active.position.copy(active.userData.off).setY(j.h+c.t/2);active.quaternion.identity();
+      j.coins.push(active);if(j.h<52)j.h+=c.t;else{j.g.remove(j.coins.shift());}
+      sortedCount++;if(autoMission&&sortedCount>=AUTO_AFTER&&missionReq===null)missionReq='auto';
+      active=null;phase='rest';pt=0;}
+  }else if(phase==='rest'){
+    if(pt>=DUR.rest){stepOnce=false;
+      if(missionReq!==null){let k=missionReq;if(k==='auto'){k=jars.reduce((b,j)=>j.coins.length>jars[b].coins.length?j.k:b,0);}missionReq=null;askNote.textContent='';setStage(-1);startMission(k);phase='mission';}
+      else{beginRotate();if(!playing){setStage(0);}}}
+  }else if(phase==='mission'){
+    missionTick(dt*speed);if(!mission)beginRotate();
+  }
+}
+/* ---------- carrusel ---------- */
+let carTarget=0;
+function wrapPi(d){return((d+Math.PI)%(2*Math.PI)+2*Math.PI)%(2*Math.PI)-Math.PI;}
+function carouselTo(k,where){const want=(where==='drop'?Math.PI:0)-k*JAR.step*D2R;carTarget=carousel.rotation.y+wrapPi(want-carousel.rotation.y);}
+function carouselTick(dt){const d=carTarget-carousel.rotation.y,m=150*D2R*dt;carousel.rotation.y+=Math.abs(d)<m?d:Math.sign(d)*m;}
+function carouselDone(){return Math.abs(carTarget-carousel.rotation.y)<1e-3;}
+
+/* ---------- misión: voz → carro → obstáculos → meta ---------- */
+const projEl=[...document.querySelectorAll('#proj li')];
+function setProj(i){projEl.forEach((li,k)=>li.classList.toggle('on',k===i));}
+const SPOKEN={50:'cincuenta',100:'cien',200:'doscientos',500:'quinientos'};
+function spoken(c){return c.id==='1000'?'mil':SPOKEN[parseInt(c.name)]+' '+c.name.split(' ')[1];}
+const WP=[[900,190],[1180,190],[1300,-170],[1630,-170],[1750,200],[2080,200],[2200,-160],[2530,-160],[2700,0]];
+const SCAN=[0,2,4,6];
+let mission=null,missionReq=null,sortedCount=0,autoMission=!COIN_ONLY;const AUTO_AFTER=6;
+function buildMission(k){
+  const s=[{t:'voice',dur:2.6},{t:'present'},
+    {t:'move',to:[720,-350]},{t:'turn',toward:[720,0]},{t:'move',to:[720,0]},{t:'turnH',h:Math.PI},
+    {t:'move',to:[PICK_CAR_X,0]},{t:'grab',dur:.8},{t:'move',to:[720,0],back:true},{t:'turnH',h:0}];
+  WP.forEach((p,i)=>{if(SCAN.includes(i))s.push({t:'scan',dur:1.2,n:SCAN.indexOf(i)+1});s.push({t:'turn',toward:p});s.push({t:'move',to:p});});
+  s.push({t:'goal',dur:2},{t:'reset',dur:.4});
+  return {s,i:0,st:0,k,jar:jars[k],init:false};
+}
+function startMission(k){mission=buildMission(k);usCone.visible=true;document.getElementById('roHead').textContent='Carro recolector';}
+const lastCar=new V3();
+function missionTick(dt){
+  const m=mission,st=m.s[m.i];
+  if(!m.init){m.init=true;m.st=0;stepInit(st);}
+  m.st+=dt;
+  const done=stepRun(st,dt);
+  if(done){m.i++;m.init=false;if(m.i>=m.s.length)mission=null;}
+}
+function stepInit(st){
+  const c=COINS[mission.k];
+  if(st.t==='voice'){setProj(2);bubble.visible=true;bubbleEl.textContent='«Hello robot»';coinName.textContent='Pedido por voz';coinInfo.textContent='palabra de activación';setCoinChip(c.id);}
+  if(st.t==='present'){carouselTo(mission.k,'pick');coinName.textContent='Frasco '+c.name;coinInfo.textContent='el carrusel lo gira al punto de recogida ('+mission.jar.coins.length+' monedas)';link.visible=true;linkLbl.visible=true;}
+  if(st.t==='move'){st.from=[car.position.x,car.position.z];const d=Math.hypot(st.to[0]-st.from[0],st.to[1]-st.from[1]);st.dur=Math.max(.05,d/320);
+    if(mission.i<8)coinInfo.textContent=mission.i===6?'llega frente al frasco y frena en la barra en T':'sigue la línea hasta el carrusel';
+    else if(!st.back)coinInfo.textContent='avanza hacia la meta';}
+  if(st.t==='turn'||st.t==='turnH'){const h=st.t==='turnH'?st.h:Math.atan2(-(st.toward[1]-car.position.z),st.toward[0]-car.position.x);
+    st.h0=car.rotation.y;st.d=wrapPi(h-st.h0);st.dur=Math.max(.05,Math.abs(st.d)/2.6);}
+  if(st.t==='grab'){coinInfo.textContent='cierra la pinza y retrocede';}
+  if(st.t==='scan'){setProj(3);coinName.textContent='Obstáculo '+st.n;coinInfo.textContent='HC-SR04 lo detecta: frena, mira a los lados y rodea';}
+  if(st.t==='goal'){coinName.textContent='Meta';coinInfo.textContent='frasco entregado';}
+}
+function stepRun(st,dt){
+  const k=Math.min(1,mission.st/(st.dur||1));
+  if(st.t==='voice'){if(k>.45)bubbleEl.textContent='«'+spoken(COINS[mission.k])+'»';if(k>=1){bubble.visible=false;return true;}return false;}
+  if(st.t==='present'){if(carouselDone()&&mission.st>1.2){link.visible=false;linkLbl.visible=false;return true;}return false;}
+  if(st.t==='move'){const e=ease(k);car.position.x=st.from[0]+(st.to[0]-st.from[0])*e;car.position.z=st.from[1]+(st.to[1]-st.from[1])*e;return k>=1;}
+  if(st.t==='turn'||st.t==='turnH'){car.rotation.y=st.h0+st.d*ease(k);return k>=1;}
+  if(st.t==='grab'){const o=29.5-7*ease(k);jawL.position.z=o;jawR.position.z=-o;if(k>=1){car.attach(mission.jar.g);return true;}return false;}
+  if(st.t==='scan'){pan.rotation.y=Math.sin(k*Math.PI*2)*60*D2R;usCone.material.opacity=.12+.25*Math.abs(Math.sin(k*Math.PI*4));if(k>=1){pan.rotation.y=0;usCone.material.opacity=.12;return true;}return false;}
+  if(st.t==='goal'){return k>=1;}
+  if(st.t==='reset'){if(k>=1){const j=mission.jar;carousel.attach(j.g);j.g.position.copy(j.slot);j.g.rotation.set(0,0,0);
+      jawL.position.z=29.5;jawR.position.z=-29.5;carPose(START[0],START[1],Math.PI);usCone.visible=false;sortedCount=0;setProj(0);document.getElementById('roHead').textContent='Moneda en curso';return true;}return false;}
+  return true;
+}
+beginRotate();
+
+const playBtn=document.getElementById('play');
+function syncPlay(){playBtn.textContent=playing?'Pausar':'Reanudar';}
+syncPlay();
+playBtn.onclick=()=>{playing=!playing;syncPlay();};
+document.getElementById('step').onclick=()=>{if(!playing)stepOnce=true;};
+document.getElementById('speed').onchange=e=>{speed=parseFloat(e.target.value)||1;};
+const askSel=document.getElementById('ask'),askNote=document.getElementById('askNote');
+COINS.forEach((c,k)=>{const o=document.createElement('option');o.value=k;o.textContent='Frasco '+c.name;askSel.appendChild(o);});
+document.getElementById('askBtn').onclick=()=>{if(mission){askNote.textContent='El carro ya está en camino. Pide otro frasco cuando vuelva.';return;}
+  missionReq=askSel.value==='auto'?'auto':parseInt(askSel.value);askNote.textContent='Pedido recibido: se atiende al terminar la moneda que está en la estación.';
+  if(!playing){playing=true;syncPlay();}};
+document.getElementById('tAuto').onchange=e=>{autoMission=e.target.checked;};
+
+/* ---------- render ---------- */
+function resize(){
+  const w=viewer.clientWidth,h=viewer.clientHeight;
+  renderer.setSize(w,h);labelR.setSize(w,h);camera.aspect=w/h;camera.updateProjectionMatrix();
+}
+new ResizeObserver(resize).observe(viewer);resize();
+
+const clock=new THREE.Clock();
+function frame(){
+  const dt=Math.min(clock.getDelta(),.05);
+  lastCar.copy(car.position);
+  update(dt);
+  if(follow&&mission){const d=car.position.clone().sub(lastCar);camera.position.add(d);controls.target.add(d);}
+  if(link.visible){const p=linkGeo.attributes.position;p.setXYZ(0,espStation.x,espStation.y+10,espStation.z);p.setXYZ(1,car.position.x,FLOOR+140,car.position.z);p.needsUpdate=true;link.computeLineDistances();
+    linkLbl.position.set((espStation.x+car.position.x)/2,(FLOOR+140+espStation.y)/2+40,(espStation.z+car.position.z)/2);}
+  controls.update();
+  const w=viewer.clientWidth,h=viewer.clientHeight;
+  renderer.setScissorTest(false);renderer.setViewport(0,0,w,h);renderer.render(scene,camera);
+  if(showInset){
+    const r=insetEl.getBoundingClientRect(),vr=viewer.getBoundingClientRect();
+    const x=r.left-vr.left+2,y=vr.bottom-r.bottom+2,iw=r.width-4,ih=r.height-4;
+    renderer.setScissorTest(true);renderer.setScissor(x,y,iw,ih);renderer.setViewport(x,y,iw,ih);
+    renderer.render(scene,camView);renderer.setScissorTest(false);
+  }
+  labelR.render(scene,camera);
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+})();
+</script>
+
+</body></html>
