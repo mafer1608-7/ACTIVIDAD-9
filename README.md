@@ -19,7 +19,7 @@ Este repositorio reúne la **entrega (a): el contador de monedas montado de form
 | **Estación de identificación** | Detiene cada moneda contra una compuerta en V, bajo la cámara, dentro de una cámara de luz difusa | ESP32-S3 (8 MB PSRAM) + OV2640 + tira LED | Diseñado y simulado en 3D · Montaje: _pendiente_ |
 | **Compuerta en V** | Centra la moneda para la foto y la suelta hacia la Etapa 2 | Servo SG90 | Diseñado y simulado en 3D · Montaje: _pendiente_ |
 | **Carrusel de 9 frascos** | Pone bajo un embudo fijo el frasco que corresponde a la moneda identificada | 28BYJ-48 + ULN2003 | Diseñado y simulado en 3D · Montaje: _pendiente_ |
-| **Clasificador de imágenes** | Decide cuál de las 9 monedas está bajo la cámara | OpenCV (detección) + MobileNetV2 en PyTorch (clasificación), cámara del celular | Primera versión en [`vision/`](vision/): modelo de 4 clases y modelo binario $100 vieja contra otras |
+| **Clasificador de imágenes** | Decide cuál de las 9 monedas está bajo la cámara | OpenCV (detección) + MobileNetV2 en PyTorch (clasificación), cámara del celular | Primera versión en las carpetas `1/` a `12/` ([sección 5](#5-identificación-y-conteo)): modelo de 4 clases y modelo binario $100 vieja contra otras |
 | **Contador** | Suma la cantidad y el valor por denominación | _Por definir_ | _Pendiente_ |
 
 **Resultados principales de esta entrega**
@@ -319,16 +319,16 @@ https://github.com/user-attachments/assets/9f565c47-1adc-4a37-94b0-31186b304a08
 
 ## 5. Identificación y conteo
 
-El código de esta etapa está en [`vision/`](vision/). Corre en el **PC con Python** y usa como cámara el **celular** (apps IP Webcam o DroidCam por Wi-Fi) o una webcam USB. El modelo se exporta también a ONNX, que es el paso previo para cuantizarlo y llevarlo al ESP32-S3 con ESP-PPQ y ESP-DL.
+El código de esta etapa está en [`1/vision/`](1/vision/). Los modelos y los datos están repartidos en las carpetas `2/` a `12/` (ver la [sección 5.3](#53-datos-y-modelos-entrenados)). Corre en el **PC con Python** y usa como cámara el **celular** (apps IP Webcam o DroidCam por Wi-Fi) o una webcam USB. El modelo se exporta también a ONNX, que es el paso previo para cuantizarlo y llevarlo al ESP32-S3 con ESP-PPQ y ESP-DL.
 
 ### 5.1 Cómo funciona
 
 El reconocimiento se hace en dos pasos:
 
-1. **Detectar** ([`comun.py`](vision/comun.py)). Se resta una foto de la bandeja vacía (`fondo.png`), se umbraliza con Otsu y se buscan contornos. Solo se acepta un objeto si es circular (circularidad ≥ 0,82 sobre el casco convexo) y llena su círculo envolvente (≥ 0,88). Así se rechazan dos monedas pegadas o una moneda cortada por el borde, en vez de clasificarlas mal.
+1. **Detectar** ([`comun.py`](1/vision/comun.py)). Se resta una foto de la bandeja vacía (`fondo.png`), se umbraliza con Otsu y se buscan contornos. Solo se acepta un objeto si es circular (circularidad ≥ 0,82 sobre el casco convexo) y llena su círculo envolvente (≥ 0,88). Así se rechazan dos monedas pegadas o una moneda cortada por el borde, en vez de clasificarlas mal.
 2. **Clasificar**. Cada moneda se recorta en una ventana cuadrada de **tamaño fijo en píxeles**, con el fondo puesto en negro. Al no reescalar la moneda, el recorte conserva su diámetro real. El recorte pasa por una **MobileNetV2** preentrenada en ImageNet y ajustada a las monedas.
 
-En vivo ([`04_reconocer_en_vivo.py`](vision/04_reconocer_en_vivo.py)) la exactitud se refuerza con tres mecanismos:
+En vivo ([`04_reconocer_en_vivo.py`](1/vision/04_reconocer_en_vivo.py)) la exactitud se refuerza con tres mecanismos:
 
 - Se promedian las probabilidades de varios fotogramas de la misma moneda (7 por defecto).
 - Si la confianza queda bajo el umbral (0,80 por defecto) se muestra `?` en vez de arriesgar un error.
@@ -338,14 +338,14 @@ En vivo ([`04_reconocer_en_vivo.py`](vision/04_reconocer_en_vivo.py)) la exactit
 
 | Script | Qué hace |
 |---|---|
-| [`01_probar_camara.py`](vision/01_probar_camara.py) | Abre la cámara, muestra la detección y guarda la foto de la bandeja vacía (tecla `f`) |
-| [`02_capturar_dataset.py`](vision/02_capturar_dataset.py) | Crea el dataset con etiquetado automático: se ponen en la bandeja monedas de un solo tipo, se elige la clase con una tecla y todos los recortes se guardan ya etiquetados |
-| [`03_entrenar.py`](vision/03_entrenar.py) | Entrena la MobileNetV2 y exporta `modelo.pt`, `modelo.onnx` y `clases.json`. Con `--positiva` entrena un modelo binario (una moneda contra `otra`) |
-| [`04_reconocer_en_vivo.py`](vision/04_reconocer_en_vivo.py) | Reconoce las monedas en vivo. Tecla `r`: imprime en JSON las monedas confirmadas |
-| [`05_evaluar.py`](vision/05_evaluar.py) | Evalúa el modelo con una sesión de prueba que no se usó al entrenar |
-| [`06_revisar_dataset.py`](vision/06_revisar_dataset.py) | Control de calidad antes de entrenar: un mosaico por clase en `revision/` y el conteo por clase y por sesión |
-| [`07_grabar_video.py`](vision/07_grabar_video.py) | Graba un video de una sola moneda con la misma cámara; el nombre del archivo define la clase |
-| [`08_extraer_de_video.py`](vision/08_extraer_de_video.py) | Saca recortes de esos videos, para reprocesarlos sin volver a mover monedas |
+| [`01_probar_camara.py`](1/vision/01_probar_camara.py) | Abre la cámara, muestra la detección y guarda la foto de la bandeja vacía (tecla `f`) |
+| [`02_capturar_dataset.py`](1/vision/02_capturar_dataset.py) | Crea el dataset con etiquetado automático: se ponen en la bandeja monedas de un solo tipo, se elige la clase con una tecla y todos los recortes se guardan ya etiquetados |
+| [`03_entrenar.py`](1/vision/03_entrenar.py) | Entrena la MobileNetV2 y exporta `modelo.pt`, `modelo.onnx` y `clases.json`. Con `--positiva` entrena un modelo binario (una moneda contra `otra`) |
+| [`04_reconocer_en_vivo.py`](1/vision/04_reconocer_en_vivo.py) | Reconoce las monedas en vivo. Tecla `r`: imprime en JSON las monedas confirmadas |
+| [`05_evaluar.py`](1/vision/05_evaluar.py) | Evalúa el modelo con una sesión de prueba que no se usó al entrenar |
+| [`06_revisar_dataset.py`](1/vision/06_revisar_dataset.py) | Control de calidad antes de entrenar: un mosaico por clase en `revision/` y el conteo por clase y por sesión |
+| [`07_grabar_video.py`](1/vision/07_grabar_video.py) | Graba un video de una sola moneda con la misma cámara; el nombre del archivo define la clase |
+| [`08_extraer_de_video.py`](1/vision/08_extraer_de_video.py) | Saca recortes de esos videos, para reprocesarlos sin volver a mover monedas |
 
 **Decisiones de diseño**
 
@@ -355,22 +355,27 @@ En vivo ([`04_reconocer_en_vivo.py`](vision/04_reconocer_en_vivo.py)) la exactit
 
 ### 5.3 Datos y modelos entrenados
 
-| Carpeta | Contenido |
+Los archivos se subieron por partes a GitHub, por eso cada parte quedó en una carpeta numerada. Todas las carpetas `N/vision/…` forman juntas una sola carpeta `vision/`.
+
+| Carpeta en el repositorio | Contenido |
 |---|---|
-| [`vision/datos_viejo/`](vision/datos_viejo/) | 960 recortes: 240 por clase de $50 vieja, $50 nueva, $100 vieja y $1.000 |
-| [`vision/modelo/`](vision/modelo/) | Modelo de **4 clases** entrenado con `datos_viejo` |
-| [`vision/datos/`](vision/datos/) | 1.208 recortes: 101 de $100 vieja y 1.107 de otras monedas (`otra`) |
-| [`vision/modelo_100v/`](vision/modelo_100v/) | Modelo **binario**: $100 vieja contra cualquier otra moneda |
+| [`1/vision/`](1/vision/) | Scripts, `comun.py`, `requirements.txt`, README de la etapa y `videos/` |
+| [`2/vision/modelo/`](2/vision/modelo/) | Modelo de **4 clases** entrenado con `datos_viejo` (`modelo.pt`, `modelo.onnx`, `clases.json`) |
+| [`3/vision/modelo_100v/`](3/vision/modelo_100v/) | Modelo **binario**: $100 vieja contra cualquier otra moneda |
+| [`4/vision/datos/`](4/vision/datos/) | Fondo, `metadatos.csv` y mosaicos de `datos` |
+| [`5/`](5/vision/datos/) · [`6/`](6/vision/datos/) · [`7/`](7/vision/datos/) · [`8/`](8/vision/datos/) | `datos`: 1.208 recortes (101 de $100 vieja y 1.107 de otras monedas) en `crops_parte1.zip` a `crops_parte8.zip` |
+| [`9/vision/datos_viejo/`](9/vision/datos_viejo/) | Fondo, `metadatos.csv` y mosaicos de `datos_viejo` |
+| [`10/`](10/vision/datos_viejo/) · [`11/`](11/vision/datos_viejo/) · [`12/`](12/vision/datos_viejo/) | `datos_viejo`: 960 recortes (240 por clase de $50 vieja, $50 nueva, $100 vieja y $1.000) en `crops_parte1.zip` a `crops_parte5.zip` |
 
-Cada carpeta de datos trae `metadatos.csv` (archivo, clase, sesión, diámetro en píxeles, circularidad y ventana), la foto del fondo y hojas de contacto en `revision/`.
+`metadatos.csv` trae, por cada recorte, el archivo, la clase, la sesión, el diámetro en píxeles, la circularidad y la ventana.
 
-> **Los recortes van comprimidos** en `crops_parte1.zip`, `crops_parte2.zip`, … porque son más de 2.000 imágenes. Antes de entrenar, descomprime todas las partes ahí mismo (opción "Extraer aquí"); juntas recrean la carpeta `crops/`.
+> **Los recortes van comprimidos** porque son más de 2.000 imágenes. Antes de entrenar, junta las partes como se explica en el [paso 6](#paso-6-reconocimiento-de-monedas-en-pc).
 
 | $100 vieja (`datos`) | Otras monedas (`datos`) |
 |---|---|
-| ![](vision/datos/revision/100_vieja.jpg) | ![](vision/datos/revision/otra.jpg) |
+| ![](4/vision/datos/revision/100_vieja.jpg) | ![](4/vision/datos/revision/otra.jpg) |
 
-Los videos crudos de los que salieron los recortes (unos 700 MB) no se suben al repositorio por su tamaño; ver [`vision/videos/`](vision/videos/).
+Los videos crudos de los que salieron los recortes (unos 700 MB) no se suben al repositorio por su tamaño; ver [`1/vision/videos/`](1/vision/videos/).
 
 ### 5.4 Estado
 
@@ -413,7 +418,7 @@ Los videos crudos de los que salieron los recortes (unos 700 MB) no se suben al 
 | Herramienta | Versión | Uso |
 |---|---|---|
 | _Por definir_ (Arduino IDE / PlatformIO / ESP-IDF) | – | Firmware |
-| Python + OpenCV, NumPy, Pillow, PyTorch, torchvision, ONNX | Python 3.10+ (ver [`vision/requirements.txt`](vision/requirements.txt)) | Detección, entrenamiento y reconocimiento en vivo |
+| Python + OpenCV, NumPy, Pillow, PyTorch, torchvision, ONNX | Python 3.10+ (ver [`vision/requirements.txt`](1/vision/requirements.txt)) | Detección, entrenamiento y reconocimiento en vivo |
 | IP Webcam o DroidCam (Android) | – | Usar el celular como cámara por Wi-Fi |
 | _Por definir_ (KiCad, Fritzing u otro) | – | Esquema eléctrico |
 | _Por definir_ (SolidWorks, Fusion 360, Onshape u otro) | – | CAD |
@@ -455,6 +460,8 @@ El montaje se hace **de la prueba más barata a la más cara**, para no construi
 
 ### Paso 6: Reconocimiento de monedas en PC
 
+**Antes de empezar, junta la carpeta `vision`.** Descarga el repositorio (botón **Code → Download ZIP**) y copia el contenido de cada `1/vision`, `2/vision`, …, `12/vision` dentro de una sola carpeta `vision`. Después, en `vision/datos` y en `vision/datos_viejo`, descomprime todas las partes `crops_parteN.zip` ahí mismo (opción "Extraer aquí"). Juntas recrean la carpeta `crops/`.
+
 ```bash
 cd vision
 pip install -r requirements.txt
@@ -465,7 +472,7 @@ python 03_entrenar.py --datos datos --salida modelo
 python 04_reconocer_en_vivo.py --fuente http://IP_DEL_CELULAR:8080/video --fondo datos/fondo.png --ventana <la misma>
 ```
 
-El celular y el PC deben estar en la misma red Wi-Fi. La `--ventana` al reconocer debe ser la misma que al capturar. Más detalle en [`vision/README.md`](vision/README.md).
+El celular y el PC deben estar en la misma red Wi-Fi. La `--ventana` al reconocer debe ser la misma que al capturar. Más detalle en [`1/vision/README.md`](1/vision/README.md).
 
 ### Paso 7: Firmware
 
@@ -490,14 +497,13 @@ ACTIVIDAD-9/
 │   └── capturas/
 │       ├── prototipo_banda.webp  ← foto del prototipo
 │       └── selector_de_monedas.mp4 ← video del funcionamiento
-├── vision/                       ← reconocimiento de monedas (parcial 2.º corte)
-│   ├── 01_…08_*.py, comun.py     ← scripts de cámara, dataset, entrenamiento y reconocimiento
-│   ├── requirements.txt
-│   ├── datos/                    ← recortes $100 vieja / otra + metadatos y mosaicos
-│   ├── datos_viejo/              ← recortes de 4 clases + metadatos y mosaicos
-│   ├── modelo/                   ← modelo de 4 clases (.pt, .onnx, clases.json)
-│   ├── modelo_100v/              ← modelo binario $100 vieja / otra
-│   └── videos/                   ← videos crudos (no se suben, ver LEEME)
+├── 1/vision/                     ← scripts (01_…08_*.py, comun.py), requirements.txt, README y videos/LEEME
+├── 2/vision/modelo/              ← modelo de 4 clases (.pt, .onnx, clases.json)
+├── 3/vision/modelo_100v/         ← modelo binario $100 vieja / otra
+├── 4/vision/datos/               ← fondo, metadatos y mosaicos de datos
+├── 5/ a 8/vision/datos/          ← recortes $100 vieja / otra (crops_parte1…8.zip)
+├── 9/vision/datos_viejo/         ← fondo, metadatos y mosaicos de datos_viejo
+├── 10/ a 12/vision/datos_viejo/  ← recortes de 4 clases (crops_parte1…5.zip)
 ├── mecanica/                     ← CAD y archivos de corte (pendiente)
 ├── electronica/                  ← esquema eléctrico (pendiente)
 └── firmware/                     ← programa del ESP32-S3 (pendiente)
